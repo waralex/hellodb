@@ -103,6 +103,7 @@ mod test {
 
         let mut reader = make_col_reader(TypeName::DBInt, file);
         let mut res = make_storage(TypeName::DBInt);
+        res.resize(c.len());
         reader.read_col(&mut res).unwrap();
         let res_ref = downcast_storage_ref::<DBInt>(res.as_ref()).unwrap();
         let c_ref = downcast_storage_ref::<DBInt>(c.as_ref()).unwrap();

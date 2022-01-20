@@ -87,12 +87,14 @@ impl<T:DBType, R:Read> ChunkReader<T, R>
         chunk_size.from_byte(&mut self.src)?;
         uncompressed_size.from_byte(&mut self.src)?;
         compressed_size.from_byte(&mut self.src)?;
-
+        if chunk_size != data.len() as u32
+        {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "chunk don't match dest data size"))
+        }
         self.compressed_buff.resize(compressed_size as usize, 0);
         self.src.read_exact(self.compressed_buff.as_mut_slice())?;
 
         let mut decoder = Decoder::new(self.compressed_buff.as_slice())?;
-        data.resize(chunk_size as usize, Default::default());
         data.from_byte(&mut decoder)?;
         Ok(())
 
@@ -126,6 +128,7 @@ mod test
 
         let mut reader = ChunkReader::<DBInt, &[u8]>::new(writer.dest().as_slice());
         let mut res = Vec::<i64>::new();
+        res.resize(data.len(), Default::default());
         reader.read(&mut res).unwrap();
         assert_eq!(res.len(), data.len());
         assert_eq!(res, data);
@@ -143,6 +146,7 @@ mod test
 
         let mut reader = ChunkReader::<DBString, &[u8]>::new(writer.dest().as_slice());
         let mut res = Vec::<String>::new();
+        res.resize(data.len(), Default::default());
         reader.read(&mut res).unwrap();
         assert_eq!(res.len(), data.len());
         assert_eq!(res, data);
@@ -167,6 +171,7 @@ mod test
 
         let mut reader = ChunkReader::<DBInt, &[u8]>::new(writer.dest().as_slice());
         let mut res = make_storage(TypeName::DBInt);
+        res.resize(c.len());
         reader.read_col_data(&mut res).unwrap();
 
         let res_ref = downcast_storage_ref::<DBInt>(res.as_ref()).unwrap();
