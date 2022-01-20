@@ -8,6 +8,17 @@ pub struct ColumnDataStorage<T:DBType> {
     data: Vec<T::InnerType>
 }
 
+impl<T:DBType>  ColumnDataStorage<T> {
+    pub fn data_ref(&self) -> &Vec<T::InnerType>
+    {
+        &self.data
+    }
+    pub fn data_mut(&mut self) -> &mut Vec<T::InnerType>
+    {
+        &mut self.data
+    }
+}
+
 impl<T:DBType> ColumnDataStorage<T> {
 
     pub fn new() -> ColumnDataStorage<T> {
@@ -35,11 +46,18 @@ impl<T:DBType> DerefMut for ColumnDataStorage<T>
 pub trait ColumnStorage {
     fn as_any(&self) -> &dyn Any;
     fn as_mut_any(&mut self) -> &mut dyn Any;
+    fn len(&self) -> usize;
+    fn resize(&mut self, size:usize);
+
+    //FIXME: Not the most beautiful, but quickly implemented solution for converting column data to row string data for display
+    fn to_string_at(&self, n:usize) -> String;
 }
 
 pub type StoragePtr = Box<dyn ColumnStorage>;
 
-impl<T:DBType>  ColumnStorage for ColumnDataStorage<T> {
+impl<T:DBType>  ColumnStorage for ColumnDataStorage<T>
+    where T::InnerType:Default
+{
 
     fn as_any(&self) -> &dyn Any
     {
@@ -49,6 +67,22 @@ impl<T:DBType>  ColumnStorage for ColumnDataStorage<T> {
     {
         self
     }
+
+    fn len(&self) -> usize
+    {
+        self.data.len()
+    }
+
+    fn resize(&mut self, size:usize)
+    {
+        self.data.resize(size, Default::default());
+    }
+
+    fn to_string_at(&self, n:usize) -> String
+    {
+        self[n].to_string()
+    }
+
 }
 
 impl ColumnStorage for StoragePtr {
@@ -61,6 +95,20 @@ impl ColumnStorage for StoragePtr {
     {
         self.as_mut().as_mut_any()
     }
+    fn len(&self) -> usize
+    {
+        self.as_ref().len()
+    }
+    fn resize(&mut self, size:usize)
+    {
+        self.as_mut().resize(size);
+    }
+    fn to_string_at(&self, n:usize) -> String
+    {
+        self.as_ref().to_string_at(n)
+    }
+
+
 }
 
 pub fn is_storage_of<T:DBType>(col:&dyn ColumnStorage) -> bool
@@ -80,10 +128,15 @@ pub fn downcast_storage_mut<T:DBType>(col:&mut dyn ColumnStorage) -> Option<&mut
 
 pub fn make_storage(name:TypeName) -> StoragePtr {
         match name {
-            TypeName::Int8 => Box::new(ColumnDataStorage::<Int8>::new()) as StoragePtr,
-            TypeName::Int16 => Box::new(ColumnDataStorage::<Int16>::new()) as StoragePtr
+            TypeName::DBInt => Box::new(ColumnDataStorage::<DBInt>::new()) as StoragePtr,
+            TypeName::DBFloat => Box::new(ColumnDataStorage::<DBFloat>::new()) as StoragePtr,
+            TypeName::DBString => Box::new(ColumnDataStorage::<DBString>::new()) as StoragePtr
         }
 }
+
+//=============Constant storage============
+//TODO: Move to separate mod
+
 
 
 #[cfg(test)]
@@ -92,43 +145,43 @@ mod test {
     #[test]
     fn unmut_col()
     {
-        let c = ColumnDataStorage::<Int8>::new();
-        assert_eq!(c.data, Vec::<i8>::new());
+        let c = ColumnDataStorage::<DBInt>::new();
+        assert_eq!(c.data, Vec::<i64>::new());
         assert_eq!(c.len(), 0);
     }
 
     #[test]
     fn mut_col()
     {
-        let mut c = ColumnDataStorage::<Int16>::new();
-        c.push(10);
-        c.push(20);
-        c.push(30);
-        assert_eq!(c.data, Vec::<i16>::from([10, 20, 30]));
+        let mut c = ColumnDataStorage::<DBFloat>::new();
+        c.push(10.);
+        c.push(20.3);
+        c.push(30.4);
+        assert_eq!(c.data, Vec::<f64>::from([10., 20.3, 30.4]));
         assert_eq!(c.len(), 3);
     }
 
     #[test]
     fn make_storage_test()
     {
-        let c = make_storage(TypeName::Int8);
-        assert!(is_storage_of::<Int8>(c.as_ref()));
+        let c = make_storage(TypeName::DBInt);
+        assert!(is_storage_of::<DBInt>(c.as_ref()));
 
-        let c = make_storage(TypeName::Int16);
-        assert!(!is_storage_of::<Int8>(c.as_ref()));
+        let c = make_storage(TypeName::DBFloat);
+        assert!(!is_storage_of::<DBInt>(c.as_ref()));
 
-        assert!(is_storage_of::<Int16>(c.as_ref()));
+        assert!(is_storage_of::<DBFloat>(c.as_ref()));
     }
 
     #[test]
     fn downcast_storage()
     {
-        let mut c = make_storage(TypeName::Int8);
-        let c_mut = downcast_storage_mut::<Int8>(c.as_mut()).unwrap();
+        let mut c = make_storage(TypeName::DBInt);
+        let c_mut = downcast_storage_mut::<DBInt>(c.as_mut()).unwrap();
         c_mut.data.push(10);
         c_mut.data.push(20);
 
-        let c_ref = downcast_storage_ref::<Int8>(c.as_ref()).unwrap();
+        let c_ref = downcast_storage_ref::<DBInt>(c.as_ref()).unwrap();
 
         assert_eq!(c_ref[0], 10);
         assert_eq!(c_ref[1], 20);
@@ -137,9 +190,9 @@ mod test {
     #[test]
     fn storage_for_storage_ptr()
     {
-        let c = make_storage(TypeName::Int8);
-        assert!(is_storage_of::<Int8>(&c));
-        let c_ref = downcast_storage_ref::<Int8>(&c).unwrap();
+        let c = make_storage(TypeName::DBInt);
+        assert!(is_storage_of::<DBInt>(&c));
+        let c_ref = downcast_storage_ref::<DBInt>(&c).unwrap();
         assert_eq!(c_ref.len(), 0);
     }
 }

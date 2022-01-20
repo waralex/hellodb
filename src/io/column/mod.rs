@@ -1,132 +1,115 @@
-mod serialize;
+mod native;
+
+
+use crate::types::{DBType, TypeName};
+use crate::types::types::*;
+use super::serialize::ByteSerialize;
+use native::{ChunkWriter, ChunkReader};
 use std::io::{Read, Write};
+use crate::columns::data::{StoragePtr};
 
-use crate::columns::Column;
-use crate::columns::data::*;
-use serialize::ByteSerialize;
-use lz4::{Decoder, EncoderBuilder};
-use lz4_sys::{LZ4_compressBound};
-
-pub struct ChunkWriter<T, W:Write> where Vec<T>:ByteSerialize {
-    dest: W,
-    compressed_buff :Vec<u8>,
-    _marker: std::marker::PhantomData<T>
+pub trait ColDataWriter {
+    fn write_col(&mut self, col_data:&StoragePtr) -> std::io::Result<()>;
 }
 
-impl<T, W:Write> ChunkWriter<T, W> where Vec<T>:ByteSerialize {
-    pub fn new(dest:W) -> ChunkWriter<T, W>
+impl<T:DBType, W:Write> ColDataWriter for ChunkWriter<T, W> where Vec<T::InnerType>:ByteSerialize {
+
+    fn write_col(&mut self, col_data:&StoragePtr) -> std::io::Result<()>
     {
-        ChunkWriter{
-            dest,
-            compressed_buff : Vec::new(),
-            _marker : std::marker::PhantomData::<T>{}
+        self.write_col_data(col_data)
+    }
+
+}
+
+pub type ColWriterPtr = Box<dyn ColDataWriter>;
+
+//FIXME:Replace with a macro when I become more familiar with it
+pub fn make_col_writer<W:Write + 'static>(name:TypeName, dest:W) -> ColWriterPtr {
+        match name {
+            TypeName::DBInt => Box::new(
+                        ChunkWriter::<DBInt, W>::new(dest)
+                    ) as ColWriterPtr,
+            TypeName::DBFloat => Box::new(
+                    ChunkWriter::<DBFloat, W>::new(dest)
+                ) as ColWriterPtr,
+            TypeName::DBString => Box::new(
+                    ChunkWriter::<DBString, W>::new(dest)
+            ) as ColWriterPtr,
         }
-    }
-    pub fn write(&mut self, data:&Vec<T>) -> std::io::Result<()>
+}
+
+pub trait ColDataReader {
+    fn read_col(&mut self, col_data:&mut StoragePtr) -> std::io::Result<()>;
+}
+
+impl<T:DBType, R:Read> ColDataReader for ChunkReader<T, R>
+    where Vec<T::InnerType>:ByteSerialize,
+        T::InnerType:Default+Clone
+{
+    fn read_col(&mut self, col_data:&mut StoragePtr) -> std::io::Result<()>
     {
-        let compress_bound: usize = unsafe { LZ4_compressBound(data.size_in_bytes() as i32) as usize};
-        self.compressed_buff.resize(compress_bound, 0);
-        //FIXME: Since the encoder becomes the owner of the writer
-        //then we have to create an instance of  the encoder for each chunk
-        let mut encoder = EncoderBuilder::new()
-        .level(2)
-        .build(self.compressed_buff.as_mut_slice())?;
-
-        data.to_byte(&mut encoder)?;
-
-        let chunk_size:u32 = data.len() as u32;
-        let uncompressed_size:u32 = data.size_in_bytes() as u32;
-        let compressed_size:u32 = (compress_bound - encoder.writer().len()) as u32;
-        chunk_size.to_byte(&mut self.dest)?;
-        uncompressed_size.to_byte(&mut self.dest)?;
-        compressed_size.to_byte(&mut self.dest)?;
-        self.dest.write(&self.compressed_buff[..(compressed_size as usize)])?;
-        Ok(())
-
-    }
-
-    pub fn dest(&self) -> &W
-    {
-        &self.dest
+        self.read_col_data(col_data)
     }
 }
 
-pub struct ChunkReader<T:Default+Clone, R:Read> where Vec<T>:ByteSerialize {
-    src: R,
-    compressed_buff : Vec<u8>,
-    _marker: std::marker::PhantomData<T>
-}
+pub type ColReaderPtr = Box<dyn ColDataReader>;
 
-impl<T:Default+Clone, R:Read> ChunkReader<T, R> where Vec<T>:ByteSerialize {
-    pub fn new(src:R) -> ChunkReader<T, R>
-    {
-        ChunkReader{
-            src,
-            compressed_buff : Vec::new(),
-            _marker : std::marker::PhantomData::<T>{}
+pub fn make_col_reader<R:Read + 'static>(name:TypeName, src:R) -> ColReaderPtr {
+        match name {
+            TypeName::DBInt => Box::new(
+                        ChunkReader::<DBInt, R>::new(src)
+                    ) as ColReaderPtr,
+            TypeName::DBFloat => Box::new(
+                    ChunkReader::<DBFloat, R>::new(src)
+                ) as ColReaderPtr,
+            TypeName::DBString => Box::new(
+                    ChunkReader::<DBString, R>::new(src)
+            ) as ColReaderPtr,
         }
-    }
-    pub fn read(&mut self, data:&mut Vec<T>) -> std::io::Result<()>
-    {
-
-        let mut chunk_size:u32 = 0;
-        let mut uncompressed_size:u32 = 0;
-        let mut compressed_size:u32 = 0;
-        chunk_size.from_byte(&mut self.src)?;
-        uncompressed_size.from_byte(&mut self.src)?;
-        compressed_size.from_byte(&mut self.src)?;
-
-        self.compressed_buff.resize(compressed_size as usize, 0);
-        self.src.read_exact(self.compressed_buff.as_mut_slice())?;
-
-        let mut decoder = Decoder::new(self.compressed_buff.as_slice())?;
-        data.resize(chunk_size as usize, Default::default());
-        data.from_byte(&mut decoder)?;
-        Ok(())
-
-    }
-
 }
+
+
 
 
 #[cfg(test)]
-mod test
-{
+mod test {
     use super::*;
-    //use crate::columns::Column;
-    #[test]
-    fn write_read_chunk()
+    use crate::columns::data::*;
+    use std::fs::File;
+    use std::path::Path;
+    fn cleanup_file(p:&str)
     {
-
-        let dest = Vec::<u8>::new();
-        let mut writer = ChunkWriter::<i16, Vec<u8>>::new(dest);
-        let data = Vec::<i16>::from([1,2,10, 258]);
-        writer.write(&data).unwrap();
-        assert!(writer.dest().len() > 4*3);
-        assert!(writer.dest().len() < 4*3 + 4*16);
-
-        let mut reader = ChunkReader::<i16, &[u8]>::new(writer.dest().as_slice());
-        let mut res = Vec::<i16>::new();
-        reader.read(&mut res).unwrap();
-        assert_eq!(res.len(), data.len());
-        assert_eq!(res, data);
-
+        let path = Path::new(p);
+        if path.exists()
+        {
+            std::fs::remove_file(path).unwrap();
+        }
     }
-
     #[test]
-    fn write_read_chunk_strings()
+    fn write_read()
     {
+        cleanup_file("./test.col");
+        let file = File::create("./test.col").unwrap();
+        let mut writer = make_col_writer(TypeName::DBInt, file);
+        let mut c = make_storage(TypeName::DBInt);
+        let c_mut = downcast_storage_mut::<DBInt>(c.as_mut()).unwrap();
+        c_mut.data_mut().push(10);
+        c_mut.data_mut().push(20);
+        c_mut.data_mut().push(30);
+        c_mut.data_mut().push(40);
+        writer.write_col(&c).unwrap();
 
-        let dest = Vec::<u8>::new();
-        let mut writer = ChunkWriter::<String, Vec<u8>>::new(dest);
-        let data = Vec::<String>::from(["1".to_string(), "231".to_string(), "a".to_string(), "bbbbb".to_string()]);
-        writer.write(&data).unwrap();
+        let file = File::open("./test.col").unwrap();
 
-        let mut reader = ChunkReader::<String, &[u8]>::new(writer.dest().as_slice());
-        let mut res = Vec::<String>::new();
-        reader.read(&mut res).unwrap();
-        assert_eq!(res.len(), data.len());
-        assert_eq!(res, data);
+        let mut reader = make_col_reader(TypeName::DBInt, file);
+        let mut res = make_storage(TypeName::DBInt);
+        reader.read_col(&mut res).unwrap();
+        let res_ref = downcast_storage_ref::<DBInt>(res.as_ref()).unwrap();
+        let c_ref = downcast_storage_ref::<DBInt>(c.as_ref()).unwrap();
+
+        assert_eq!(res_ref.data_ref().len(), c_ref.data_ref().len());
+        assert_eq!(*res_ref.data_ref(), *c_ref.data_ref());
+
+        cleanup_file("./test.col");
     }
-
 }

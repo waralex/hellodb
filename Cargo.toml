@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 lz4 = "1.23.1"
 lz4-sys = "1.9.2"
-enum-iterator = "0.7"
+cli-table = "0.4"
+itertools = "0.10.2"
