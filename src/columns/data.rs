@@ -2,6 +2,7 @@ use std::ops::{DerefMut, Deref};
 use crate::types::{DBType, TypeName};
 use crate::types::types::*;
 use std::any::Any;
+use itertools::izip;
 
 #[derive(Debug, Clone)]
 pub struct ColumnDataStorage<T:DBType> {
@@ -49,6 +50,9 @@ pub trait ColumnStorage {
     fn len(&self) -> usize;
     fn resize(&mut self, size:usize);
 
+    fn copy_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize);
+    fn copy_filtered_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize, filter:&Box<dyn ColumnStorage>);
+
     //FIXME: Not the most beautiful, but quickly implemented solution for converting column data to row string data for display
     fn to_string_at(&self, n:usize) -> String;
 }
@@ -83,6 +87,29 @@ impl<T:DBType>  ColumnStorage for ColumnDataStorage<T>
         self[n].to_string()
     }
 
+    fn copy_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize)
+    {
+        let dest_itr = downcast_storage_mut::<T>(dest).unwrap().iter_mut().skip(offset);
+        for (s, d) in izip!(self.data.iter(), dest_itr)
+        {
+            *d = s.clone();
+        }
+
+    }
+    fn copy_filtered_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize, filter:&Box<dyn ColumnStorage>)
+    {
+        let dest_itr = downcast_storage_mut::<T>(dest).unwrap().iter_mut().skip(offset);
+        let filter_itr = downcast_storage_ref::<DBInt>(filter).unwrap().iter();
+        for (s, d, f) in izip!(self.data.iter(), dest_itr, filter_itr)
+        {
+            if f == &1
+            {
+                *d = s.clone();
+            }
+        }
+
+    }
+
 }
 
 impl ColumnStorage for StoragePtr {
@@ -106,6 +133,14 @@ impl ColumnStorage for StoragePtr {
     fn to_string_at(&self, n:usize) -> String
     {
         self.as_ref().to_string_at(n)
+    }
+    fn copy_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize)
+    {
+        self.as_ref().copy_to(dest, offset)
+    }
+    fn copy_filtered_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize, filter:&Box<dyn ColumnStorage>)
+    {
+        self.as_ref().copy_filtered_to(dest, offset, filter)
     }
 
 

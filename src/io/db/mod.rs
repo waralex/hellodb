@@ -45,8 +45,6 @@ pub fn make_test_table_dir(db_path:impl AsRef<Path>, table:&Table) -> std::io::R
     let table_path = db_path.as_ref().join(PathBuf::from(table.name()));
     create_dir_all(&table_path)?;
     write_schema(&table_path.join("schema.bin"), table.schema())?;
-    let mut meta_file = File::create(&table_path.join("meta.bin"))?;
-    table.rows_len().to_byte(&mut meta_file)?;
     Ok(())
 }
 
@@ -54,10 +52,7 @@ pub fn open_table(db_path:impl AsRef<Path>, name:impl AsRef<str>) -> std::io::Re
 {
     let table_path = db_path.as_ref().join(PathBuf::from(name.as_ref()));
     let schema = read_schema(table_path.join("schema.bin"))?;
-    let mut meta_file = File::open(table_path.join("meta.bin"))?;
-    let mut rows_len:u64 = 0;
-    rows_len.from_byte(&mut meta_file)?;
-    Ok(Table::new(table_path, name.as_ref(), schema, rows_len))
+    Ok(Table::new(table_path, name.as_ref(), schema))
 }
 
 pub fn make_test_database(db_path:impl AsRef<Path>, tables:&[Table]) -> std::io::Result<()>
@@ -129,12 +124,11 @@ mod test
             ColumnHeader::new("f", TypeName::DBInt),
             ColumnHeader::new("ff", TypeName::DBFloat),
         ]);
-        make_test_table_dir("test_db", &Table::new("", "test_tb", sch.clone(), 1000)).unwrap();
+        make_test_table_dir("test_db", &Table::new("", "test_tb", sch.clone())).unwrap();
         let tb = open_table("test_db", "test_tb").unwrap();
         assert_eq!(tb.path(), PathBuf::from("test_db").join("test_tb"));
         assert_eq!(tb.name(), "test_tb");
         assert_eq!(*tb.schema(), sch);
-        assert_eq!(tb.rows_len(), 1000);
 
         remove_dir_all("test_db").unwrap_or_default();
     }
@@ -154,8 +148,8 @@ mod test
         ]);
         let base_path = PathBuf::from("test_db2");
         let tables = vec![
-                Table::new(base_path.join("test1"), "test1", sch1.clone(), 1000),
-                Table::new(base_path.join("test2"), "test2", sch2.clone(), 2000)
+                Table::new(base_path.join("test1"), "test1", sch1.clone()),
+                Table::new(base_path.join("test2"), "test2", sch2.clone())
         ];
         make_test_database("test_db2", &tables).unwrap();
         let db = open_database("test_db2").unwrap();

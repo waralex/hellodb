@@ -47,6 +47,14 @@ impl Column {
     {
         self.data.resize(size);
     }
+    pub fn copy_to(&self, dest:&mut Column, offset:usize)
+    {
+        self.data.copy_to(dest.data_mut(), offset);
+    }
+    pub fn copy_filtered_to(&self, dest:&mut Column, offset:usize, filter:&Column)
+    {
+        self.data.copy_filtered_to(dest.data_mut(), offset, filter.data_ref());
+    }
 
     pub fn downcast_data_ref<T:DBType>(&self) -> Option<&ColumnDataStorage<T>>
     {

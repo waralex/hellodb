@@ -1,7 +1,7 @@
 use super::*;
 use std::io::Read;
 use crate::io::column::{ColReaderPtr, make_col_reader};
-use crate::types::TypeName;
+use crate::types::{TypeName, DBType};
 use crate::functions::regular::RegFunctionRef;
 use crate::columns::Column;
 pub trait ColumnSource
@@ -58,6 +58,32 @@ impl ColumnSource for ExternalSource
         }
     }
 }
+
+pub struct ConstValueSource<T:DBType>
+{
+    value :T::InnerType
+}
+
+impl<T:DBType> ConstValueSource<T>
+{
+    pub fn new(value:T::InnerType) -> Self
+    {
+        Self{value:value.clone()}
+    }
+}
+
+impl<T:DBType> ColumnSource for ConstValueSource<T>
+{
+    fn fill_column(&mut self, block:&mut Vec<Column>, col_ind:usize) -> DBResult<()>
+    {
+        for v in block[col_ind].downcast_data_iter_mut::<T>().unwrap() {
+            *v = self.value.clone()
+        }
+
+        Ok(())
+    }
+}
+
 
 pub struct FunctionSource
 {

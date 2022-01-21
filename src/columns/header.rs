@@ -7,9 +7,9 @@ pub struct ColumnHeader
 }
 
 impl ColumnHeader {
-    pub fn new(name:&str, type_name : TypeName) -> ColumnHeader
+    pub fn new(name:&str, type_name : TypeName) -> Self
     {
-        ColumnHeader{name:String::from(name), type_name}
+        Self{name:String::from(name), type_name}
     }
     pub fn name(&self) -> &str
     {

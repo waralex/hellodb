@@ -1,4 +1,5 @@
 use crate::columns::header::ColumnHeader;
+use crate::columns::Column;
 use std::path::{PathBuf, Path};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -9,6 +10,10 @@ pub struct Schema
 
 impl Schema
 {
+    pub fn new(headers:Vec<ColumnHeader>) -> Self
+    {
+        Self{headers}
+    }
     //There are few columns and the operation is rare, so there is no point in indexing through a hash map
     pub fn find_col(&self, name:&str) -> Option<&ColumnHeader>
     {
@@ -52,15 +57,14 @@ pub struct Table
 {
     path:PathBuf,
     name:String,
-    schema:Schema,
-    rows_len:u64
+    schema:Schema
 }
 
 impl Table
 {
-    pub fn new(path:impl AsRef<Path>, name:&str, schema:Schema, rows_len:u64) -> Table
+    pub fn new(path:impl AsRef<Path>, name:&str, schema:Schema) -> Self
     {
-        Table{path:PathBuf::from(path.as_ref()), name:name.to_string(), schema, rows_len}
+        Self{path:PathBuf::from(path.as_ref()), name:name.to_string(), schema}
     }
 
     pub fn path(&self) -> &Path
@@ -77,11 +81,28 @@ impl Table
     {
         &self.schema
     }
-
-    pub fn rows_len(&self) -> u64
+    pub fn make_column(&self, name:&str) -> Option<Column>
     {
-        self.rows_len
+        match self.schema.find_col(name) {
+            Some(header) => Some(Column::new(header.clone())),
+            None => None
+        }
     }
+
+    pub fn sizes_file_path(&self) -> PathBuf
+    {
+        self.path.join("_sizes.bin")
+    }
+
+    pub fn col_path(&self, name:&str) -> Option<PathBuf>
+    {
+        match self.schema.find_col(name) {
+            Some(_) => Some(self.path.join(format!("{}.bin", name))),
+            None => None
+        }
+
+    }
+
 }
 
 #[cfg(test)]

@@ -1,8 +1,11 @@
 pub mod source;
 use crate::DBResult;
 use crate::columns::Column;
+use std::collections::HashMap;
 use std::cmp::min;
 use cli_table::{Cell, Table, TableStruct, CellStruct, format::{Justify }, Style };
+use std::rc::Rc;
+use std::cell::{RefCell, RefMut};
 use source::*;
 
 
@@ -11,6 +14,8 @@ pub struct ColumnBlock
     columns:Vec<Column>,
     sources:Vec<ColumnSourceRef>
 }
+
+pub type BlockRef = Rc<RefCell<ColumnBlock>>;
 
 impl ColumnBlock
 {
@@ -52,22 +57,21 @@ impl ColumnBlock
         &self.columns[ind]
     }
 
-    unsafe fn col_at_ptr(&self, ind:usize) -> *const Column
-    {
-        &self.columns[ind] as *const Column
-    }
-
     pub fn col_at_mut(&mut self, ind:usize) -> &mut Column
     {
         &mut self.columns[ind]
     }
-
-    pub fn process(&mut self, rows:usize) -> DBResult<()>
+    pub fn resize(&mut self, rows:usize)
     {
         for i in 0..self.columns.len()
         {
             self.columns[i].resize(rows);
         }
+    }
+
+    pub fn process(&mut self, rows:usize) -> DBResult<()>
+    {
+        self.resize(rows);
         for i in 0..self.columns.len()
         {
             self.sources[i].fill_column(&mut self.columns, i)?;
@@ -126,11 +130,16 @@ impl ColumnBlock
 mod test {
     use super::*;
     use crate::columns::header::*;
+    use crate::columns::data::*;
     use crate::types::*;
     use crate::types::types::*;
     use itertools::izip;
     use crate::functions::regular::arithmetic::*;
+    use crate::functions::regular::cmp::*;
     use crate::functions::regular::*;
+    use std::fs::File;
+    use std::path::{Path, PathBuf};
+    use crate::io::column::*;
     #[test]
     fn fun_src()
     {
@@ -159,6 +168,100 @@ mod test {
         for (i, v) in block.col_at(2).downcast_data_iter::<DBInt>().unwrap().enumerate()
         {
             assert_eq!(*v, (1 + i as i64) * 11);
+        }
+    }
+    #[test]
+    fn srcs()
+    {
+        let test_path = PathBuf::from("block_tst");
+        if test_path.exists()
+        {
+            std::fs::remove_dir_all(&test_path).unwrap();
+        }
+        std::fs::create_dir(&test_path).unwrap();
+
+        let a_path = test_path.join("a.col");
+        let b_path = test_path.join("b.col");
+        let c_path = test_path.join("c.col");
+
+        let a_file = File::create(&a_path).unwrap();
+        let b_file = File::create(&b_path).unwrap();
+        let c_file = File::create(&c_path).unwrap();
+        let mut a_writer = make_col_writer(TypeName::DBInt, a_file);
+        let mut b_writer = make_col_writer(TypeName::DBInt, b_file);
+        let mut c_writer = make_col_writer(TypeName::DBInt, c_file);
+        let mut a_strg = make_storage(TypeName::DBInt);
+        let mut b_strg = make_storage(TypeName::DBInt);
+        let mut c_strg = make_storage(TypeName::DBInt);
+
+        a_strg.resize(4);
+        b_strg.resize(4);
+        c_strg.resize(4);
+
+        let a_data = downcast_storage_mut::<DBInt>(a_strg.as_mut()).unwrap().data_mut();
+        a_data.copy_from_slice(&([1, 2, 3, 4] as [i64;4]));
+        a_writer.write_col(&a_strg).unwrap();
+
+        let b_data = downcast_storage_mut::<DBInt>(b_strg.as_mut()).unwrap().data_mut();
+        b_data.copy_from_slice(&([10, 20, 30, 40] as [i64;4]));
+        b_writer.write_col(&b_strg).unwrap();
+
+        let c_data = downcast_storage_mut::<DBInt>(c_strg.as_mut()).unwrap().data_mut();
+        c_data.copy_from_slice(&([11, 6, 33, 8] as [i64;4]));
+        c_writer.write_col(&c_strg).unwrap();
+
+        let a_data = downcast_storage_mut::<DBInt>(a_strg.as_mut()).unwrap().data_mut();
+        a_data.copy_from_slice(&([5, 6, 7, 8] as [i64;4]));
+        a_writer.write_col(&a_strg).unwrap();
+
+        let b_data = downcast_storage_mut::<DBInt>(b_strg.as_mut()).unwrap().data_mut();
+        b_data.copy_from_slice(&([50, 60, 70, 80] as [i64;4]));
+        b_writer.write_col(&b_strg).unwrap();
+
+        let c_data = downcast_storage_mut::<DBInt>(c_strg.as_mut()).unwrap().data_mut();
+        c_data.copy_from_slice(&([11, 66, 33, 88] as [i64;4]));
+        c_writer.write_col(&c_strg).unwrap();
+
+        let a_file = File::open(&a_path).unwrap();
+        let b_file = File::open(&b_path).unwrap();
+        let c_file = File::open(&c_path).unwrap();
+
+        let mut block = ColumnBlock::new();
+        let args = Vec::from([TypeName::DBInt, TypeName::DBInt]);
+
+        block.add(
+            Column::new(ColumnHeader::new("a", TypeName::DBInt)),
+            ExternalSource::new_ref(a_file, TypeName::DBInt),
+        ).add(
+            Column::new(ColumnHeader::new("b", TypeName::DBInt)),
+            ExternalSource::new_ref(b_file, TypeName::DBInt),
+        ).add(
+            Column::new(ColumnHeader::new("c", TypeName::DBInt)),
+            ExternalSource::new_ref(c_file, TypeName::DBInt),
+        ).add(
+            Column::new(ColumnHeader::new("a + b", TypeName::DBInt)),
+            FunctionSource::new_ref(
+                vec![0, 1], PlusBuilder::new().build(args.clone()).unwrap()
+            )
+        ).add(
+            Column::new(ColumnHeader::new("a + b == c", TypeName::DBInt)),
+            FunctionSource::new_ref(
+                vec![2, 3], EqualBuilder::new().build(args.clone()).unwrap()
+            )
+
+        );
+
+
+        block.process(4).unwrap();
+        let res:Vec<i64> = block.col_at(4).downcast_data_iter::<DBInt>().unwrap().copied().collect();
+        assert_eq!(res, vec![1, 0, 1, 0]);
+        block.process(4).unwrap();
+        let res:Vec<i64> = block.col_at(4).downcast_data_iter::<DBInt>().unwrap().copied().collect();
+        assert_eq!(res, vec![0, 1, 0, 1]);
+
+        if test_path.exists()
+        {
+            std::fs::remove_dir_all(&test_path).unwrap();
         }
     }
 }
