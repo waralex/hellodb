@@ -66,6 +66,10 @@ pub struct PlusBuilder {}
 
 impl PlusBuilder {
     pub fn new() -> PlusBuilder {Self{}}
+    pub fn new_ref() -> Box<dyn RegFunctionBuilder>
+    {
+        Box::new(Self::new())
+    }
 }
 impl RegFunctionBuilder for PlusBuilder {
 

@@ -70,6 +70,10 @@ impl<T:DBType> ConstValueSource<T>
     {
         Self{value:value.clone()}
     }
+    pub fn new_ref(value:T::InnerType) -> ColumnSourceRef
+    {
+        Box::new(Self::new(value))
+    }
 }
 
 impl<T:DBType> ColumnSource for ConstValueSource<T>

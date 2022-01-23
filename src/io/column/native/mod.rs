@@ -32,10 +32,11 @@ impl<T:DBType, W:Write> ChunkWriter<T, W> where Vec<T::InnerType>:ByteSerialize 
         .build(self.compressed_buff.as_mut_slice())?;
 
         data.to_byte(&mut encoder)?;
+        let (writer, _) = encoder.finish();
 
         let chunk_size:u32 = data.len() as u32;
         let uncompressed_size:u32 = data.size_in_bytes() as u32;
-        let compressed_size:u32 = (compress_bound - encoder.writer().len()) as u32;
+        let compressed_size:u32 = (compress_bound - writer.len()) as u32;
         chunk_size.to_byte(&mut self.dest)?;
         uncompressed_size.to_byte(&mut self.dest)?;
         compressed_size.to_byte(&mut self.dest)?;

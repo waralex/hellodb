@@ -96,18 +96,20 @@ impl<T:DBType>  ColumnStorage for ColumnDataStorage<T>
         }
 
     }
+
     fn copy_filtered_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize, filter:&Box<dyn ColumnStorage>)
     {
-        let dest_itr = downcast_storage_mut::<T>(dest).unwrap().iter_mut().skip(offset);
-        let filter_itr = downcast_storage_ref::<DBInt>(filter).unwrap().iter();
-        for (s, d, f) in izip!(self.data.iter(), dest_itr, filter_itr)
+        let mut dest_itr = downcast_storage_mut::<T>(dest).unwrap().iter_mut().skip(offset);
+        let mut filter_itr = downcast_storage_ref::<DBInt>(filter).unwrap().iter();
+        let mut self_itr = self.data.iter();
+        while let Some(flt) = filter_itr.next()
         {
-            if f == &1
+            let src = self_itr.next().unwrap();
+            if *flt == 1
             {
-                *d = s.clone();
+                *dest_itr.next().unwrap() = src.clone();
             }
         }
-
     }
 
 }

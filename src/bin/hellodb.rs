@@ -1,16 +1,20 @@
 use std::env;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use hellodb::execute::constructor::*;
+use hellodb::execute::Plan;
 use hellodb::db::DB;
+use hellodb::DBResult;
+use cli_table::print_stdout;
 
-
-fn on_line(db:&DB, l:&str)
+fn on_line(db:&DB, l:&str) -> DBResult<()>
 {
-    match make_plan_by_sql(&db, &l)  {
-        Ok(_) => {},
-        Err(e) => {println!("{}", e)}
+    if l.len() > 0
+    {
+        let mut plan = Plan::from_sql(&db, &l)?;
+        plan.execute()?;
+        print_stdout(plan.result_cli_table(100)).unwrap();
     }
+    Ok(())
 }
 
 fn main() {
@@ -20,14 +24,18 @@ fn main() {
         println!("Simple console client. Usage: hellodb <path_to_database>");
     }
     let mut rl = Editor::<()>::new();
-    let mut db = DB::open(&args[1]).unwrap();
+    let db = DB::open(&args[1]).unwrap();
     loop {
         let readline = rl.readline(">> ");
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                on_line(&db, &line);
+                match on_line(&db, &line)
+                {
+                    Err(e) => println!("{}", e),
+                    _ => {}
+                }
             },
             Err(ReadlineError::Interrupted) => {
                 break

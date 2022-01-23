@@ -1,5 +1,5 @@
 pub mod processor;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::rc::Rc;
 use crate::DBResult;
 use crate::blocks::{BlockRef, ColumnBlock};
@@ -43,6 +43,12 @@ impl ExecuteStep
         self
     }
 
+    pub fn output(&self) -> BlockRef
+    {
+        self.output.clone()
+    }
+
+
     pub fn execute(&mut self) -> DBResult<()>
     {
         let mut stopped = false;
@@ -54,7 +60,6 @@ impl ExecuteStep
                     ProcessStatus::MustGoOn => {}
                 }
             }
-
         }
         for p in self.processors.iter_mut()
         {

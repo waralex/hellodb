@@ -81,6 +81,41 @@ pub fn open_database(db_path:impl AsRef<Path>) -> std::io::Result<DB>
 
 }
 
+pub struct BlockSizeIter
+{
+    reader:File
+}
+
+impl BlockSizeIter
+{
+    fn new(reader:File) -> Self
+    {
+        Self{reader}
+    }
+}
+
+impl Iterator for BlockSizeIter
+{
+    type Item = u32;
+    fn next(&mut self) -> Option<Self::Item>
+    {
+        let mut v:u32 = 0;
+        match v.from_byte(&mut self.reader)
+        {
+            Ok(_) => Some(v),
+            Err(_) => None
+        }
+
+    }
+}
+
+pub fn table_size_iterator(table:&Table) -> std::io::Result<BlockSizeIter>
+{
+    let file = File::open(table.sizes_file_path())?;
+    Ok(BlockSizeIter::new(file))
+}
+
+
 #[cfg(test)]
 mod test
 {

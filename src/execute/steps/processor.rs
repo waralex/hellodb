@@ -1,19 +1,21 @@
 use super::*;
 use crate::types::types::*;
-struct ChunkedProcessor<T:Iterator<Item = i32>>
+use crate::io::db::BlockSizeIter;
+
+pub struct ChunkedProcessor
 {
-    sizes_iterator:T
+    sizes_iterator:BlockSizeIter
 }
 
-impl<T:Iterator<Item = i32>> ChunkedProcessor<T>
+impl ChunkedProcessor
 {
-    pub fn new(sizes_iterator:T) -> Self
+    pub fn new(sizes_iterator:BlockSizeIter) -> Self
     {
         Self{sizes_iterator}
     }
 }
 
-impl<T:Iterator<Item = i32>> Processor for ChunkedProcessor<T>
+impl Processor for ChunkedProcessor
 {
 
     fn run(&mut self, input :BlockRef, _output :BlockRef) -> DBResult<ProcessStatus>
@@ -35,17 +37,19 @@ impl<T:Iterator<Item = i32>> Processor for ChunkedProcessor<T>
 
 }
 
-struct FilteredAppendToOutputProcessor
+pub struct FilteredAppendToOutputProcessor
 {
     cols_to_copy :Vec<usize>,
-    filter_col_index:Option<usize>
+    filter_col_index:Option<usize>,
+    limit:Option<usize>,
+    processed:usize
 }
 
 impl FilteredAppendToOutputProcessor
 {
-    pub fn new(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>) -> Self
+    pub fn new(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>, limit:Option<usize>) -> Self
     {
-        Self{cols_to_copy, filter_col_index}
+        Self{cols_to_copy, filter_col_index, limit, processed:0}
     }
 }
 
@@ -73,12 +77,25 @@ impl Processor for FilteredAppendToOutputProcessor
                 None => input.col_at(*in_i).copy_to(out.col_at_mut(out_i), offset)
             };
         }
+        self.processed += add_size as usize;
 
-        Ok(ProcessStatus::MustGoOn)
+        Ok(match self.limit {
+            Some(l) => {
+                if self.processed >= l {ProcessStatus::MustStop} else {ProcessStatus::MustGoOn}
+            },
+            None => ProcessStatus::MustGoOn
+        })
     }
 
-    fn finalize(&mut self, _output :BlockRef) -> DBResult<()>
+    fn finalize(&mut self, output :BlockRef) -> DBResult<()>
     {
+        match self.limit {
+            Some(l) => {
+                let sz = std::cmp::min(l, output.borrow().rows_len());
+                output.borrow_mut().resize(sz);
+            },
+            None => {}
+        };
         Ok(())
     }
 

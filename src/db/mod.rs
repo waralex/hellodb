@@ -5,7 +5,7 @@ use std::path::{PathBuf, Path};
 use crate::io::db::open_database;
 pub struct DB
 {
-    path:PathBuf,
+    _path:PathBuf,
     tables:HashMap<String,Table>
 }
 
@@ -18,7 +18,7 @@ impl DB
         {
             tables.insert(t.name().to_string(), t);
         }
-        Self{path:PathBuf::from(path.as_ref()), tables}
+        Self{_path:PathBuf::from(path.as_ref()), tables}
     }
 
     pub fn open(path: impl AsRef<Path>) -> std::io::Result<Self>

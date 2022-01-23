@@ -2,9 +2,9 @@ pub mod header;
 pub mod data;
 
 use header::ColumnHeader;
-use crate::types::DBType;
+use crate::types::{DBType, TypeName};
 use data::*;
-use crate::DBResult;
+
 
 pub struct Column
 {
@@ -29,6 +29,15 @@ impl Column {
         &self.header
     }
 
+    pub fn name(&self) -> &str
+    {
+        &self.header.name()
+    }
+    pub fn type_name(&self) -> TypeName
+    {
+        self.header.type_name()
+    }
+
     pub fn data_ref(&self) -> &StoragePtr
     {
         &self.data
@@ -36,6 +45,11 @@ impl Column {
     pub fn data_mut(&mut self) -> &mut StoragePtr
     {
         &mut self.data
+    }
+
+    pub fn clone_empty(&self) -> Self
+    {
+        Self::new(self.header.clone())
     }
 
     pub fn len(&self) -> usize

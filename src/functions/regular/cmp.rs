@@ -56,6 +56,10 @@ pub struct EqualBuilder {}
 
 impl EqualBuilder {
     pub fn new() -> EqualBuilder {Self{}}
+    pub fn new_ref() -> Box<dyn RegFunctionBuilder>
+    {
+        Box::new(Self::new())
+    }
 }
 impl RegFunctionBuilder for EqualBuilder {
 
@@ -81,8 +85,7 @@ impl RegFunctionBuilder for EqualBuilder {
                     TypeName::DBString => Ok(TypeName::DBInt),
                     _ => Err(err_str)
                 }
-            },
-            _ => Err(err_str)
+           }
 
         }
     }
@@ -108,8 +111,7 @@ impl RegFunctionBuilder for EqualBuilder {
                     TypeName::DBString => Ok(Box::new(Equal::<DBString, DBString>::new())),
                     _ => Err(err_str)
                 }
-            },
-            _ => Err(err_str)
+            }
 
         }
 

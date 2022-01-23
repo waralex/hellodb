@@ -5,14 +5,15 @@ use std::collections::HashMap;
 use std::cmp::min;
 use cli_table::{Cell, Table, TableStruct, CellStruct, format::{Justify }, Style };
 use std::rc::Rc;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use source::*;
 
 
 pub struct ColumnBlock
 {
     columns:Vec<Column>,
-    sources:Vec<ColumnSourceRef>
+    sources:Vec<ColumnSourceRef>,
+    name_index:HashMap<String, usize>
 }
 
 pub type BlockRef = Rc<RefCell<ColumnBlock>>;
@@ -21,11 +22,12 @@ impl ColumnBlock
 {
     pub fn new() -> ColumnBlock
     {
-        ColumnBlock { columns: Vec::new(), sources: Vec::new() }
+        ColumnBlock { columns: Vec::new(), sources: Vec::new(), name_index: HashMap::new() }
     }
 
     pub fn add(&mut self, column:Column, source:ColumnSourceRef) -> &mut ColumnBlock
     {
+        self.name_index.insert(column.name().to_string(), self.columns.len());
         self.columns.push(column);
         self.sources.push(source);
         self
@@ -49,6 +51,18 @@ impl ColumnBlock
         else
         {
             self.columns[0].len()
+        }
+    }
+
+    pub fn has_col(&self, name:&str) -> bool
+    {
+        self.name_index.contains_key(name)
+    }
+    pub fn col_index_by_name(&self, name:&str) -> Option<usize>
+    {
+        match self.name_index.get(name) {
+            Some(v) => Some(v.clone()),
+            None => None
         }
     }
 
