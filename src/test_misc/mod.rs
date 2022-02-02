@@ -11,7 +11,7 @@ use std::fs::File;
 use std::cmp::min;
 use crate::db::DB;
 
-pub fn create_test_db(path:impl AsRef<Path>) -> DB
+pub fn create_test_db(path:impl AsRef<Path>, size:usize) -> DB
 {
 
     let table = Table::new(
@@ -35,7 +35,7 @@ pub fn create_test_db(path:impl AsRef<Path>) -> DB
 
     let block_size = 6;
 
-    let mut rows = 100;
+    let mut rows = size;
 
     let mut sizes_file = File::create(table.sizes_file_path()).unwrap();
 
@@ -101,6 +101,7 @@ pub fn create_test_db(path:impl AsRef<Path>) -> DB
             *v = i as f64 / 2.;
         }
         value_writer.write_col(value_col.data_ref()).unwrap();
+        id+=1;
     }
     DB::open(path.as_ref()).unwrap()
 }

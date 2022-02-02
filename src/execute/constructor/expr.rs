@@ -3,6 +3,7 @@ use crate::blocks::source::*;
 use std::fs::File;
 use crate::functions::regular::arithmetic::*;
 use crate::functions::regular::cmp::*;
+use crate::functions::regular::boolean::*;
 use crate::columns::Column;
 use crate::columns::header::ColumnHeader;
 use crate::types::TypeName;
@@ -23,7 +24,7 @@ impl<'a> ExprConstructor<'a>
 
     pub fn parse(&mut self, expr:&Expr) -> DBResult<String>
     {
-        let col_name = format!("{}", expr);
+        let mut col_name = format!("{}", expr);
 
         if self.input.has_col(&col_name) {return Ok(col_name);}
 
@@ -34,8 +35,15 @@ impl<'a> ExprConstructor<'a>
             Expr::BinaryOp{left, op, right} => {
                 self.parse_binary_op(&col_name, &op, &left, &right)?;
             },
+            Expr::UnaryOp{op, expr} => {
+                self.parse_unary_op(&col_name, &op, &expr)?;
+            },
             Expr::Value(v) => {
                 self.parse_value(&col_name, &v)?;
+            },
+            Expr::Nested(v) => {
+                col_name = format!("{}", v);
+                self.parse(v)?;
             },
             other => {return Err(format!("{} is not supported yet", other));}
         };
@@ -79,7 +87,17 @@ impl<'a> ExprConstructor<'a>
     {
         let op_builder = match op {
             BinaryOperator::Plus => PlusBuilder::new_ref(),
+            BinaryOperator::Minus => MinusBuilder::new_ref(),
+            BinaryOperator::Multiply => MultiplyBuilder::new_ref(),
+            BinaryOperator::Divide => DivideBuilder::new_ref(),
             BinaryOperator::Eq => EqualBuilder::new_ref(),
+            BinaryOperator::NotEq => NotEqualBuilder::new_ref(),
+            BinaryOperator::Lt => LessBuilder::new_ref(),
+            BinaryOperator::LtEq => LessEqualBuilder::new_ref(),
+            BinaryOperator::Gt => GreaterBuilder::new_ref(),
+            BinaryOperator::GtEq => GreaterEqualBuilder::new_ref(),
+            BinaryOperator::And => AndBuilder::new_ref(),
+            BinaryOperator::Or => OrBuilder::new_ref(),
             _ =>  return Err(format!("Operation {} not supported yet", op))
         };
 
@@ -100,6 +118,29 @@ impl<'a> ExprConstructor<'a>
             )
         );
 
+        Ok(())
+    }
+    fn parse_unary_op(&mut self, col_name:&String, op:&UnaryOperator, expr:&Expr) -> DBResult<()>
+    {
+        let op_builder = match op {
+            UnaryOperator::Not => NotBuilder::new_ref(),
+            _ =>  return Err(format!("Operation {} not supported yet", op))
+        };
+
+        let expr_name = &self.parse(expr)?;
+        println!("FFF {}", expr_name);
+        let expr_index = self.input.col_index_by_name(&expr_name).unwrap();
+        let arg_types = vec![
+            self.input.col_at(expr_index).type_name(),
+        ];
+        let type_name = op_builder.result_type(arg_types.clone())?;
+        self.input.add(
+            Column::new(ColumnHeader::new(col_name, type_name)),
+            FunctionSource::new_ref(
+                vec![expr_index],
+                op_builder.build(arg_types)?
+            )
+        );
         Ok(())
     }
     fn parse_value(&mut self, col_name:&String, val:&Value) -> DBResult<()>

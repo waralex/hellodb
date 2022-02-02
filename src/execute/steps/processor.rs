@@ -1,21 +1,27 @@
 use super::*;
 use crate::types::types::*;
-use crate::io::db::BlockSizeIter;
 
-pub struct ChunkedProcessor
+pub struct ChunkedProcessor<Iter:Iterator<Item = u32>>
 {
-    sizes_iterator:BlockSizeIter
+    sizes_iterator:Iter
 }
 
-impl ChunkedProcessor
+impl<Iter:Iterator<Item = u32> + 'static> ChunkedProcessor<Iter>
 {
-    pub fn new(sizes_iterator:BlockSizeIter) -> Self
+    pub fn new(sizes_iterator:Iter) -> Self
     {
         Self{sizes_iterator}
     }
+
+    pub fn new_ref(sizes_iterator:Iter) -> ProcessorRef
+    {
+        Rc::new(
+            RefCell::new(Self::new(sizes_iterator))
+        )
+    }
 }
 
-impl Processor for ChunkedProcessor
+impl<Iter:Iterator<Item = u32>> Processor for ChunkedProcessor<Iter>
 {
 
     fn run(&mut self, input :BlockRef, _output :BlockRef) -> DBResult<ProcessStatus>
@@ -29,28 +35,34 @@ impl Processor for ChunkedProcessor
             Ok(ProcessStatus::MustStop)
         }
     }
-
-    fn finalize(&mut self, _output :BlockRef) -> DBResult<()>
-    {
-        Ok(())
-    }
-
 }
 
 pub struct FilteredAppendToOutputProcessor
 {
     cols_to_copy :Vec<usize>,
     filter_col_index:Option<usize>,
+    offset:usize,
     limit:Option<usize>,
-    processed:usize
+    rest_offset:Option<usize>,
+    processed:usize,
 }
 
 impl FilteredAppendToOutputProcessor
 {
-    pub fn new(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>, limit:Option<usize>) -> Self
+    pub fn new(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>, offset:Option<usize>, limit:Option<usize>) -> Self
     {
-        Self{cols_to_copy, filter_col_index, limit, processed:0}
+        Self{cols_to_copy, filter_col_index, offset:offset.unwrap_or(0), limit, processed:0, rest_offset:None}
     }
+    pub fn new_ref(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>,
+                         offset:Option<usize>, limit:Option<usize>) -> Rc<RefCell<Self>>
+    {
+        Rc::new(
+            RefCell::new(
+                Self::new(cols_to_copy, filter_col_index, offset, limit)
+            )
+        )
+    }
+
 }
 
 impl Processor for FilteredAppendToOutputProcessor
@@ -67,6 +79,17 @@ impl Processor for FilteredAppendToOutputProcessor
             Some(col) => col.downcast_data_iter::<DBInt>().unwrap().sum(),
             None => input.rows_len() as i64
         };
+
+        if self.processed + add_size as usize <= self.offset
+        {
+            self.processed += add_size as usize;
+            return Ok(ProcessStatus::MustGoOn);
+        }
+
+        if self.rest_offset.is_none()
+        {
+            self.rest_offset = Some(self.offset - self.processed);
+        }
         let mut out = output.borrow_mut();
         let offset = out.rows_len();
         out.resize(offset + add_size as usize);
@@ -81,22 +104,21 @@ impl Processor for FilteredAppendToOutputProcessor
 
         Ok(match self.limit {
             Some(l) => {
-                if self.processed >= l {ProcessStatus::MustStop} else {ProcessStatus::MustGoOn}
+                if self.processed >= l + self.offset {ProcessStatus::MustStop} else {ProcessStatus::MustGoOn}
             },
             None => ProcessStatus::MustGoOn
         })
+
     }
 
-    fn finalize(&mut self, output :BlockRef) -> DBResult<()>
+}
+
+
+impl PostProcessor for FilteredAppendToOutputProcessor
+{
+    fn run(&mut self, output :BlockRef) -> DBResult<()>
     {
-        match self.limit {
-            Some(l) => {
-                let sz = std::cmp::min(l, output.borrow().rows_len());
-                output.borrow_mut().resize(sz);
-            },
-            None => {}
-        };
+        output.borrow_mut().fit_offset_limit(self.rest_offset.unwrap_or(0), self.limit);
         Ok(())
     }
-
 }

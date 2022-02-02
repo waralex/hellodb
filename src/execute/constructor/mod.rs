@@ -36,8 +36,10 @@ impl<'a>  Constructor<'a>
     fn parse_query(&self, query:&Query) -> DBResult<Plan>
     {
         let limit = Self::parse_limit(&query.limit);
+        let offset = Self::parse_offset(&query.offset);
+
         match &query.body {
-                SetExpr::Select(s) => self.parse_select(&s.as_ref(), limit),
+                SetExpr::Select(s) => self.parse_select(&s.as_ref(), offset, limit),
                 other => Err(format!("{} unsupported yet", other))
             }
 
@@ -51,7 +53,19 @@ impl<'a>  Constructor<'a>
         }
     }
 
-    fn parse_select(&self, select:&Select, limit:Option<usize>) -> DBResult<Plan>
+    fn parse_offset(off_expr:&Option<Offset>) -> Option<usize>
+    {
+        match off_expr {
+            Some(
+                Offset{
+                    value:Expr::Value(Value::Number(v, _)), rows
+                }
+            ) => Some(v.parse::<usize>().unwrap()),
+            _ => None
+        }
+    }
+
+    fn parse_select(&self, select:&Select, offset:Option<usize>, limit:Option<usize>) -> DBResult<Plan>
     {
         let table = self.parse_from(&select.from)?;
         let mut input = ColumnBlock::new();
@@ -99,19 +113,17 @@ impl<'a>  Constructor<'a>
 
         let mut step = ExecuteStep::new(input, output);
         step.add_proc(
-            Box::new(
-                ChunkedProcessor::new(table_size_iterator(&table).unwrap())
-            )
+            ChunkedProcessor::new_ref(table_size_iterator(&table).unwrap())
         );
-        step.add_proc(
-            Box::new(
-                FilteredAppendToOutputProcessor::new(
+        let append_proc_ref = FilteredAppendToOutputProcessor::new_ref(
                     res_indexes,
                     filter_col_index,
+                    offset,
                     limit
-                )
-            )
-        );
+                );
+        step.add_proc(append_proc_ref.clone());
+
+        step.add_post_proc(append_proc_ref.clone());
 
         Ok(Plan::new(step))
     }
@@ -154,16 +166,12 @@ impl<'a>  Constructor<'a>
 mod test {
     use super::*;
     use crate::test_misc::*;
-    use crate::columns::header::ColumnHeader;
-    use crate::db::table::Schema;
-    use std::path::PathBuf;
-    use crate::types::TypeName;
 
     #[test]
     fn make_plan()
     {
-        cleanup_test_table("plan_db");
-        let db = create_test_db("plan_db");
+        cleanup_test_table("constr_db");
+        let db = create_test_db("constr_db", 100);
 
         let constr = Constructor::new(&db);
 
@@ -187,6 +195,7 @@ mod test {
         let test_query = "select id from regs limit 100";
         assert!(!constr.make_plan(test_query).is_err());
 
+        cleanup_test_table("constr_db");
     }
 
 }

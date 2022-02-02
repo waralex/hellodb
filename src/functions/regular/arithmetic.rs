@@ -116,12 +116,354 @@ impl RegFunctionBuilder for PlusBuilder {
         }
 
     }
-
 }
 
+/*========== Minus =========*/
+pub struct Minus<L, R>
+{
+    _l :std::marker::PhantomData<L>,
+    _r :std::marker::PhantomData<R>,
+}
 
+impl<L, R> Minus<L, R>
+{
+    pub fn new() -> Self
+    {
+        Self{
+            _l:std::marker::PhantomData::<L>{},
+            _r:std::marker::PhantomData::<R>{},
+        }
+    }
+}
 
+impl OpResult for Minus<DBInt, DBInt>
+{
+    type ResultType = DBInt;
+}
+impl OpResult for Minus<DBFloat, DBFloat>
+{
+    type ResultType = DBFloat;
+}
 
+impl<L:DBType, R:DBType> RegFunction for Minus<L, R>
+where L::InnerType:ops::Sub<
+            R::InnerType,
+            Output = <<Self as OpResult>::ResultType as DBType>::InnerType
+        >,
+      Self:OpResult,
+      L::InnerType:Copy,
+      R::InnerType:Copy,
+{
+    fn apply(&self, src:Vec<&Column>, dest:&mut Column) -> DBResult<()>
+    {
+        assert_eq!(src.len(), 2);
+
+        let l_it = src[0].downcast_data_iter::<L>().unwrap();
+        let r_it = src[1].downcast_data_iter::<R>().unwrap();
+
+        let dest_it = dest.downcast_data_iter_mut::<<Self as OpResult>::ResultType>().unwrap();
+
+        for (l, r, d) in izip!(l_it, r_it, dest_it)
+        {
+            *d = *l - *r;
+        }
+
+        Ok(())
+    }
+    fn to_string(&self, src:Vec<String>) -> String
+    {
+        assert_eq!(src.len(), 2);
+        format!("{} - {}", src[0], src[1])
+    }
+}
+
+pub struct MinusBuilder {}
+
+impl MinusBuilder {
+    pub fn new() -> MinusBuilder {Self{}}
+    pub fn new_ref() -> Box<dyn RegFunctionBuilder>
+    {
+        Box::new(Self::new())
+    }
+}
+impl RegFunctionBuilder for MinusBuilder {
+
+    fn result_type(&self, src:Vec<TypeName>) -> DBResult<TypeName>
+    {
+        assert_eq!(src.len(), 2);
+        let err_str = format!("- operation unsupported for {} and {}", src[0], src[1]);
+        match src[0] {
+            TypeName::DBInt => {
+                match src[1] {
+                    TypeName::DBInt => Ok(TypeName::DBInt),
+                    _ => Err(err_str)
+                }
+            }
+            TypeName::DBFloat => {
+                match src[1] {
+                    TypeName::DBFloat => Ok(TypeName::DBFloat),
+                    _ => Err(err_str)
+                }
+            },
+            _ => Err(err_str)
+
+        }
+    }
+    fn build(&self, src:Vec<TypeName>) -> DBResult<Box<dyn RegFunction>>
+    {
+        assert_eq!(src.len(), 2);
+        let err_str = format!("- operation unsupported for {} and {}", src[0], src[1]);
+        match src[0] {
+            TypeName::DBInt => {
+                match src[1] {
+                    TypeName::DBInt => Ok(Box::new(Minus::<DBInt, DBInt>::new())),
+                    _ => Err(err_str)
+                }
+            }
+            TypeName::DBFloat => {
+                match src[1] {
+                    TypeName::DBFloat => Ok(Box::new(Minus::<DBFloat, DBFloat>::new())),
+                    _ => Err(err_str)
+                }
+            },
+            _ => Err(err_str)
+
+        }
+
+    }
+}
+
+/* ======= Multiply =============== */
+
+pub struct Multiply<L, R>
+{
+    _l :std::marker::PhantomData<L>,
+    _r :std::marker::PhantomData<R>,
+}
+
+impl<L, R> Multiply<L, R>
+{
+    pub fn new() -> Self
+    {
+        Self{
+            _l:std::marker::PhantomData::<L>{},
+            _r:std::marker::PhantomData::<R>{},
+        }
+    }
+}
+
+impl OpResult for Multiply<DBInt, DBInt>
+{
+    type ResultType = DBInt;
+}
+impl OpResult for Multiply<DBFloat, DBFloat>
+{
+    type ResultType = DBFloat;
+}
+
+impl<L:DBType, R:DBType> RegFunction for Multiply<L, R>
+where L::InnerType:ops::Mul<
+            R::InnerType,
+            Output = <<Self as OpResult>::ResultType as DBType>::InnerType
+        >,
+      Self:OpResult,
+      L::InnerType:Copy,
+      R::InnerType:Copy,
+{
+    fn apply(&self, src:Vec<&Column>, dest:&mut Column) -> DBResult<()>
+    {
+        assert_eq!(src.len(), 2);
+
+        let l_it = src[0].downcast_data_iter::<L>().unwrap();
+        let r_it = src[1].downcast_data_iter::<R>().unwrap();
+
+        let dest_it = dest.downcast_data_iter_mut::<<Self as OpResult>::ResultType>().unwrap();
+
+        for (l, r, d) in izip!(l_it, r_it, dest_it)
+        {
+            *d = *l * *r;
+        }
+
+        Ok(())
+    }
+    fn to_string(&self, src:Vec<String>) -> String
+    {
+        assert_eq!(src.len(), 2);
+        format!("{} - {}", src[0], src[1])
+    }
+}
+
+pub struct MultiplyBuilder {}
+
+impl MultiplyBuilder {
+    pub fn new() -> Self {Self{}}
+    pub fn new_ref() -> Box<dyn RegFunctionBuilder>
+    {
+        Box::new(Self::new())
+    }
+}
+impl RegFunctionBuilder for MultiplyBuilder {
+
+    fn result_type(&self, src:Vec<TypeName>) -> DBResult<TypeName>
+    {
+        assert_eq!(src.len(), 2);
+        let err_str = format!("* operation unsupported for {} and {}", src[0], src[1]);
+        match src[0] {
+            TypeName::DBInt => {
+                match src[1] {
+                    TypeName::DBInt => Ok(TypeName::DBInt),
+                    _ => Err(err_str)
+                }
+            }
+            TypeName::DBFloat => {
+                match src[1] {
+                    TypeName::DBFloat => Ok(TypeName::DBFloat),
+                    _ => Err(err_str)
+                }
+            },
+            _ => Err(err_str)
+
+        }
+    }
+    fn build(&self, src:Vec<TypeName>) -> DBResult<Box<dyn RegFunction>>
+    {
+        assert_eq!(src.len(), 2);
+        let err_str = format!("* operation unsupported for {} and {}", src[0], src[1]);
+        match src[0] {
+            TypeName::DBInt => {
+                match src[1] {
+                    TypeName::DBInt => Ok(Box::new(Multiply::<DBInt, DBInt>::new())),
+                    _ => Err(err_str)
+                }
+            }
+            TypeName::DBFloat => {
+                match src[1] {
+                    TypeName::DBFloat => Ok(Box::new(Multiply::<DBFloat, DBFloat>::new())),
+                    _ => Err(err_str)
+                }
+            },
+            _ => Err(err_str)
+
+        }
+
+    }
+}
+
+/* ======= Divide =============== */
+
+pub struct Divide<L, R>
+{
+    _l :std::marker::PhantomData<L>,
+    _r :std::marker::PhantomData<R>,
+}
+
+impl<L, R> Divide<L, R>
+{
+    pub fn new() -> Self
+    {
+        Self{
+            _l:std::marker::PhantomData::<L>{},
+            _r:std::marker::PhantomData::<R>{},
+        }
+    }
+}
+
+impl OpResult for Divide<DBInt, DBInt>
+{
+    type ResultType = DBInt;
+}
+impl OpResult for Divide<DBFloat, DBFloat>
+{
+    type ResultType = DBFloat;
+}
+
+impl<L:DBType, R:DBType> RegFunction for Divide<L, R>
+where L::InnerType:ops::Div<
+            R::InnerType,
+            Output = <<Self as OpResult>::ResultType as DBType>::InnerType
+        >,
+      Self:OpResult,
+      L::InnerType:Copy,
+      R::InnerType:Copy,
+{
+    fn apply(&self, src:Vec<&Column>, dest:&mut Column) -> DBResult<()>
+    {
+        assert_eq!(src.len(), 2);
+
+        let l_it = src[0].downcast_data_iter::<L>().unwrap();
+        let r_it = src[1].downcast_data_iter::<R>().unwrap();
+
+        let dest_it = dest.downcast_data_iter_mut::<<Self as OpResult>::ResultType>().unwrap();
+
+        for (l, r, d) in izip!(l_it, r_it, dest_it)
+        {
+            *d = *l / *r;
+        }
+
+        Ok(())
+    }
+    fn to_string(&self, src:Vec<String>) -> String
+    {
+        assert_eq!(src.len(), 2);
+        format!("{} / {}", src[0], src[1])
+    }
+}
+
+pub struct DivideBuilder {}
+
+impl DivideBuilder {
+    pub fn new() -> Self {Self{}}
+    pub fn new_ref() -> Box<dyn RegFunctionBuilder>
+    {
+        Box::new(Self::new())
+    }
+}
+impl RegFunctionBuilder for DivideBuilder {
+
+    fn result_type(&self, src:Vec<TypeName>) -> DBResult<TypeName>
+    {
+        assert_eq!(src.len(), 2);
+        let err_str = format!("/ operation unsupported for {} and {}", src[0], src[1]);
+        match src[0] {
+            TypeName::DBInt => {
+                match src[1] {
+                    TypeName::DBInt => Ok(TypeName::DBInt),
+                    _ => Err(err_str)
+                }
+            }
+            TypeName::DBFloat => {
+                match src[1] {
+                    TypeName::DBFloat => Ok(TypeName::DBFloat),
+                    _ => Err(err_str)
+                }
+            },
+            _ => Err(err_str)
+
+        }
+    }
+    fn build(&self, src:Vec<TypeName>) -> DBResult<Box<dyn RegFunction>>
+    {
+        assert_eq!(src.len(), 2);
+        let err_str = format!("/ operation unsupported for {} and {}", src[0], src[1]);
+        match src[0] {
+            TypeName::DBInt => {
+                match src[1] {
+                    TypeName::DBInt => Ok(Box::new(Divide::<DBInt, DBInt>::new())),
+                    _ => Err(err_str)
+                }
+            }
+            TypeName::DBFloat => {
+                match src[1] {
+                    TypeName::DBFloat => Ok(Box::new(Divide::<DBFloat, DBFloat>::new())),
+                    _ => Err(err_str)
+                }
+            },
+            _ => Err(err_str)
+
+        }
+
+    }
+}
 #[cfg(test)]
 mod test {
     use super::*;

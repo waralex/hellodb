@@ -14,16 +14,22 @@ pub enum ProcessStatus
 pub trait Processor
 {
     fn run(&mut self, input :BlockRef, output :BlockRef) -> DBResult<ProcessStatus>;
-    fn finalize(&mut self, output :BlockRef) -> DBResult<()>;
 }
 
-pub type ProcessorRef = Box<dyn Processor>;
+pub trait PostProcessor
+{
+    fn run(&mut self, output :BlockRef) -> DBResult<()>;
+}
+
+pub type ProcessorRef = Rc<RefCell<dyn Processor>>;
+pub type PostProcessorRef = Rc<RefCell<dyn PostProcessor>>;
 
 pub struct ExecuteStep
 {
     input :BlockRef,
     output :BlockRef,
     processors :Vec<ProcessorRef>,
+    post_processors :Vec<PostProcessorRef>,
 }
 
 impl ExecuteStep
@@ -33,13 +39,20 @@ impl ExecuteStep
         Self {
             input :Rc::new(RefCell::new(input)),
             output :Rc::new(RefCell::new(output)),
-            processors: Vec::<ProcessorRef>::new()
+            processors: Vec::<ProcessorRef>::new(),
+            post_processors: Vec::<PostProcessorRef>::new()
         }
     }
 
     pub fn add_proc(&mut self, proc:ProcessorRef) -> &mut Self
     {
         self.processors.push(proc);
+        self
+    }
+
+    pub fn add_post_proc(&mut self, proc:PostProcessorRef) -> &mut Self
+    {
+        self.post_processors.push(proc);
         self
     }
 
@@ -55,15 +68,15 @@ impl ExecuteStep
         while !stopped {
             for p in self.processors.iter_mut()
             {
-                match p.run(self.input.clone(), self.output.clone())? {
+                match p.borrow_mut().run(self.input.clone(), self.output.clone())? {
                     ProcessStatus::MustStop => {stopped = true},
                     ProcessStatus::MustGoOn => {}
                 }
             }
         }
-        for p in self.processors.iter_mut()
+        for p in self.post_processors.iter_mut()
         {
-            p.finalize(self.output.clone())?;
+            p.borrow_mut().run(self.output.clone())?;
         }
         Ok(())
     }

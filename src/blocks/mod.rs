@@ -82,6 +82,13 @@ impl ColumnBlock
             self.columns[i].resize(rows);
         }
     }
+    pub fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>)
+    {
+        for i in 0..self.columns.len()
+        {
+            self.columns[i].fit_offset_limit(offset, limit);
+        }
+    }
 
     pub fn process(&mut self, rows:usize) -> DBResult<()>
     {

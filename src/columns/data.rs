@@ -50,6 +50,8 @@ pub trait ColumnStorage {
     fn len(&self) -> usize;
     fn resize(&mut self, size:usize);
 
+    fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>);
+
     fn copy_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize);
     fn copy_filtered_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize, filter:&Box<dyn ColumnStorage>);
 
@@ -80,6 +82,31 @@ impl<T:DBType>  ColumnStorage for ColumnDataStorage<T>
     fn resize(&mut self, size:usize)
     {
         self.data.resize(size, Default::default());
+    }
+
+    fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>)
+    {
+        let size_with_offset = self.len() - offset;
+        let res_size = match limit {
+            Some(l) => std::cmp::min(l, size_with_offset),
+            None => size_with_offset
+        };
+        if offset > 0
+        {
+            let dest_ptr = self.data.as_mut_ptr();
+            let src_ptr = unsafe {self.data.as_mut_ptr().add(offset)};
+            for i in 0..res_size
+            {
+                unsafe {
+                    std::ptr::swap(dest_ptr.add(i), src_ptr.add(i));
+                }
+            }
+        }
+
+        unsafe
+        {
+            self.data.set_len(res_size);
+        }
     }
 
     fn to_string_at(&self, n:usize) -> String
@@ -131,6 +158,10 @@ impl ColumnStorage for StoragePtr {
     fn resize(&mut self, size:usize)
     {
         self.as_mut().resize(size);
+    }
+    fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>)
+    {
+        self.as_mut().fit_offset_limit(offset, limit);
     }
     fn to_string_at(&self, n:usize) -> String
     {
@@ -231,5 +262,55 @@ mod test {
         assert!(is_storage_of::<DBInt>(&c));
         let c_ref = downcast_storage_ref::<DBInt>(&c).unwrap();
         assert_eq!(c_ref.len(), 0);
+    }
+
+    #[test]
+    fn fit_limit_offset()
+    {
+
+        let mut c = ColumnDataStorage::<DBInt>::new();
+        let mut test_data = Vec::<i64>::new();
+        for i in 1..20
+        {
+            c.push(i);
+            test_data.push(i);
+        }
+        c.fit_offset_limit(0, None);
+        assert_eq!(c.data, test_data);
+
+        c.fit_offset_limit(3, None);
+        assert_eq!(c.data, test_data[3..]);
+
+        c.fit_offset_limit(2, Some(10));
+        assert_eq!(c.data, test_data[5..15]);
+
+        c.fit_offset_limit(0, Some(3));
+        assert_eq!(c.data, test_data[5..8]);
+
+    }
+
+    #[test]
+    fn fit_limit_offset_string()
+    {
+
+        let mut c = ColumnDataStorage::<DBString>::new();
+        let mut test_data = Vec::<String>::new();
+        for i in 1..20
+        {
+            c.push(i.to_string());
+            test_data.push(i.to_string());
+        }
+        c.fit_offset_limit(0, None);
+        assert_eq!(c.data, test_data);
+
+        c.fit_offset_limit(3, None);
+        assert_eq!(c.data, test_data[3..]);
+
+        c.fit_offset_limit(2, Some(10));
+        assert_eq!(c.data, test_data[5..15]);
+
+        c.fit_offset_limit(0, Some(3));
+        assert_eq!(c.data, test_data[5..8]);
+
     }
 }

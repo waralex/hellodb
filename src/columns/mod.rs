@@ -61,6 +61,10 @@ impl Column {
     {
         self.data.resize(size);
     }
+    pub fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>)
+    {
+        self.data.fit_offset_limit(offset, limit);
+    }
     pub fn copy_to(&self, dest:&mut Column, offset:usize)
     {
         self.data.copy_to(dest.data_mut(), offset);

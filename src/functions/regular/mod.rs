@@ -1,5 +1,6 @@
 pub mod arithmetic;
 pub mod cmp;
+pub mod boolean;
 
 use crate::DBResult;
 use crate::columns::Column;
