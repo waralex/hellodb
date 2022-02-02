@@ -68,6 +68,8 @@ pub fn create_test_db(path:impl AsRef<Path>, size:usize) -> DB
     );
 
     let mut id:i64 = 1;
+    let mut age:i64 = size as i64 + 1;
+    let mut gender_p = 1;
     while rows > 0
     {
         let bsize = min(block_size, rows);
@@ -84,14 +86,16 @@ pub fn create_test_db(path:impl AsRef<Path>, size:usize) -> DB
         age_col.resize(bsize);
         for (i, v) in age_col.downcast_data_iter_mut::<DBInt>().unwrap().enumerate()
         {
-            *v = 10 + i as i64;
+            *v = age;
+            age -= 1;
         }
         age_writer.write_col(age_col.data_ref()).unwrap();
 
         gender_col.resize(bsize);
         for v in gender_col.downcast_data_iter_mut::<DBString>().unwrap()
         {
-            *v = genders[(id % 2) as usize].to_string();
+            *v = genders[(gender_p % 2) as usize].to_string();
+            gender_p += 1;
         }
         gender_writer.write_col(gender_col.data_ref()).unwrap();
 
@@ -101,7 +105,6 @@ pub fn create_test_db(path:impl AsRef<Path>, size:usize) -> DB
             *v = i as f64 / 2.;
         }
         value_writer.write_col(value_col.data_ref()).unwrap();
-        id+=1;
     }
     DB::open(path.as_ref()).unwrap()
 }

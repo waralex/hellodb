@@ -3,6 +3,8 @@ use crate::types::{DBType, TypeName};
 use crate::types::types::*;
 use std::any::Any;
 use itertools::izip;
+use crate::io::serialize::*;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct ColumnDataStorage<T:DBType> {
@@ -55,6 +57,12 @@ pub trait ColumnStorage {
     fn copy_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize);
     fn copy_filtered_to(&self, dest:&mut Box<dyn ColumnStorage>, offset:usize, filter:&Box<dyn ColumnStorage>);
 
+    fn pack_value_to(&self, at:usize, dest: &mut Vec<u8>);
+    fn unpack_value_from(&mut self, at:usize, src: &mut &[u8]);
+
+    fn elems_cmp(&self, a_index:usize, b_index:usize) -> Ordering;
+    fn permute(&mut self, perms: &[usize]);
+
     //FIXME: Not the most beautiful, but quickly implemented solution for converting column data to row string data for display
     fn to_string_at(&self, n:usize) -> String;
 }
@@ -62,7 +70,7 @@ pub trait ColumnStorage {
 pub type StoragePtr = Box<dyn ColumnStorage>;
 
 impl<T:DBType>  ColumnStorage for ColumnDataStorage<T>
-    where T::InnerType:Default
+    where T::InnerType:Default, T::InnerType:ByteSerialize + PartialEq + PartialOrd
 {
 
     fn as_any(&self) -> &dyn Any
@@ -139,6 +147,30 @@ impl<T:DBType>  ColumnStorage for ColumnDataStorage<T>
         }
     }
 
+    fn pack_value_to(&self, at:usize, dest: &mut Vec<u8>)
+    {
+        self.data[at].to_byte(dest).unwrap();
+    }
+    fn unpack_value_from(&mut self, at:usize, src: &mut &[u8])
+    {
+        self.data[at].from_byte(src).unwrap();
+    }
+
+    fn elems_cmp(&self, a_index:usize, b_index:usize) -> Ordering
+    {
+        self.data[a_index].partial_cmp(&self.data[b_index]).unwrap()
+    }
+
+    fn permute(&mut self, perms: &[usize])
+    {
+        let mut new_data = Vec::<T::InnerType>::with_capacity(perms.len());
+        for pos in perms.iter()
+        {
+            new_data.push(self.data[*pos].clone());
+        }
+        std::mem::swap(&mut self.data, &mut new_data);
+    }
+
 }
 
 impl ColumnStorage for StoragePtr {
@@ -176,6 +208,23 @@ impl ColumnStorage for StoragePtr {
         self.as_ref().copy_filtered_to(dest, offset, filter)
     }
 
+    fn pack_value_to(&self, at:usize, dest: &mut Vec<u8>)
+    {
+        self.as_ref().pack_value_to(at, dest);
+    }
+    fn unpack_value_from(&mut self, at:usize, src: &mut &[u8])
+    {
+        self.as_mut().unpack_value_from(at, src);
+    }
+    fn elems_cmp(&self, a_index:usize, b_index:usize) -> Ordering
+    {
+        self.as_ref().elems_cmp(a_index, b_index)
+    }
+
+    fn permute(&mut self, perms: &[usize])
+    {
+        self.as_mut().permute(perms);
+    }
 
 }
 
@@ -312,5 +361,36 @@ mod test {
         c.fit_offset_limit(0, Some(3));
         assert_eq!(c.data, test_data[5..8]);
 
+    }
+
+    #[test]
+    fn pack_unpack()
+    {
+        let mut ca = ColumnDataStorage::<DBInt>::new();
+        let mut cb = ColumnDataStorage::<DBString>::new();
+        let mut cc = ColumnDataStorage::<DBFloat>::new();
+        ca.push(1);
+        cb.push("testttt".to_string());
+        cc.push(4.55);
+
+        let mut packed = Vec::<u8>::with_capacity(10);
+        ca.pack_value_to(0, &mut packed);
+        cb.pack_value_to(0, &mut packed);
+        cc.pack_value_to(0, &mut packed);
+
+        ca.resize(2);
+        cb.resize(2);
+        cc.resize(2);
+
+        let mut src = packed.as_slice();
+
+        ca.unpack_value_from(1, &mut src);
+        cb.unpack_value_from(1, &mut src);
+        cc.unpack_value_from(1, &mut src);
+        assert_eq!(src.len(), 0);
+
+        assert_eq!(ca[0], ca[1]);
+        assert_eq!(cb[0], cb[1]);
+        assert_eq!(cc[0], cc[1]);
     }
 }

@@ -69,7 +69,7 @@ impl ExecuteStep
             for p in self.processors.iter_mut()
             {
                 match p.borrow_mut().run(self.input.clone(), self.output.clone())? {
-                    ProcessStatus::MustStop => {stopped = true},
+                    ProcessStatus::MustStop => {stopped = true; break},
                     ProcessStatus::MustGoOn => {}
                 }
             }

@@ -5,6 +5,7 @@ pub mod blocks;
 pub mod db;
 pub mod functions;
 pub mod execute;
+pub mod tuple;
 #[cfg(test)]
 pub mod test_misc;
 

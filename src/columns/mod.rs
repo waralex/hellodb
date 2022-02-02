@@ -4,6 +4,7 @@ pub mod data;
 use header::ColumnHeader;
 use crate::types::{DBType, TypeName};
 use data::*;
+use std::cmp::Ordering;
 
 
 pub struct Column
@@ -64,6 +65,22 @@ impl Column {
     pub fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>)
     {
         self.data.fit_offset_limit(offset, limit);
+    }
+    pub fn pack_value_to(&self, at:usize, dest: &mut Vec<u8>)
+    {
+        self.data.pack_value_to(at, dest);
+    }
+    pub fn unpack_value_from(&mut self, at:usize, src: &mut &[u8])
+    {
+        self.data.unpack_value_from(at, src);
+    }
+    pub fn elems_cmp(&self, a_index:usize, b_index:usize) -> Ordering
+    {
+        self.data.elems_cmp(a_index, b_index)
+    }
+    pub fn permute(&mut self, perms: &[usize])
+    {
+        self.data.permute(perms);
     }
     pub fn copy_to(&self, dest:&mut Column, offset:usize)
     {

@@ -39,7 +39,7 @@ impl<'a>  Constructor<'a>
         let offset = Self::parse_offset(&query.offset);
 
         match &query.body {
-                SetExpr::Select(s) => self.parse_select(&s.as_ref(), offset, limit),
+                SetExpr::Select(s) => self.parse_select(&s.as_ref(), offset, limit, &query.order_by),
                 other => Err(format!("{} unsupported yet", other))
             }
 
@@ -65,7 +65,7 @@ impl<'a>  Constructor<'a>
         }
     }
 
-    fn parse_select(&self, select:&Select, offset:Option<usize>, limit:Option<usize>) -> DBResult<Plan>
+    fn parse_select(&self, select:&Select, offset:Option<usize>, limit:Option<usize>, order:&Vec<OrderByExpr>) -> DBResult<Plan>
     {
         let table = self.parse_from(&select.from)?;
         let mut input = ColumnBlock::new();
@@ -92,6 +92,13 @@ impl<'a>  Constructor<'a>
 
         }
 
+        let mut order_field_names = Vec::<String>::new();
+        for order_expr in order
+        {
+            let col_name = expr_constr.parse(&order_expr.expr)?;
+            order_field_names.push(col_name);
+        }
+
         let filter_col_index = match filter_col_name
         {
             Some(n) => Some(input.col_index_by_name(&n).unwrap()),
@@ -111,19 +118,43 @@ impl<'a>  Constructor<'a>
             );
         }
 
+        let mut order_fields = Vec::<(usize, bool)>::new();
+
+        for (order_expr, col_name) in order.iter().zip(order_field_names)
+        {
+            let col_index = input.col_index_by_name(&col_name).unwrap();
+            let is_asc = order_expr.asc.unwrap_or(true);
+            order_fields.push((col_index, is_asc));
+        }
+
+
         let mut step = ExecuteStep::new(input, output);
         step.add_proc(
             ChunkedProcessor::new_ref(table_size_iterator(&table).unwrap())
         );
+
+        let has_order = !order_fields.is_empty();
+
+        let copy_offset = if has_order {None} else {offset};
+        let copy_limit = if has_order {None} else {limit};
+
         let append_proc_ref = FilteredAppendToOutputProcessor::new_ref(
                     res_indexes,
                     filter_col_index,
-                    offset,
-                    limit
+                    copy_offset,
+                    copy_limit
                 );
         step.add_proc(append_proc_ref.clone());
 
-        step.add_post_proc(append_proc_ref.clone());
+
+        if has_order
+        {
+            step.add_post_proc(OrderByPostProcessor::new_ref(order_fields, offset, limit));
+        }
+        else
+        {
+            step.add_post_proc(append_proc_ref.clone());
+        }
 
         Ok(Plan::new(step))
     }

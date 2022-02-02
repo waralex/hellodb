@@ -1,5 +1,6 @@
 use super::*;
 use crate::types::types::*;
+use std::cmp::Ordering;
 
 pub struct ChunkedProcessor<Iter:Iterator<Item = u32>>
 {
@@ -70,6 +71,14 @@ impl Processor for FilteredAppendToOutputProcessor
 
     fn run(&mut self, input :BlockRef, output :BlockRef) -> DBResult<ProcessStatus>
     {
+        if self.limit.is_some()
+        {
+            if self.processed >= self.limit.unwrap() + self.offset
+            {
+                return Ok(ProcessStatus::MustStop);
+            }
+        }
+
         let input = input.borrow();
         let filter_col = match self.filter_col_index {
            Some(i) => Some(input.col_at(i)),
@@ -102,12 +111,7 @@ impl Processor for FilteredAppendToOutputProcessor
         }
         self.processed += add_size as usize;
 
-        Ok(match self.limit {
-            Some(l) => {
-                if self.processed >= l + self.offset {ProcessStatus::MustStop} else {ProcessStatus::MustGoOn}
-            },
-            None => ProcessStatus::MustGoOn
-        })
+        Ok(ProcessStatus::MustGoOn)
 
     }
 
@@ -119,6 +123,71 @@ impl PostProcessor for FilteredAppendToOutputProcessor
     fn run(&mut self, output :BlockRef) -> DBResult<()>
     {
         output.borrow_mut().fit_offset_limit(self.rest_offset.unwrap_or(0), self.limit);
+        Ok(())
+    }
+}
+
+pub struct OrderByPostProcessor
+{
+    fields:Vec<(usize, bool)>,
+    offset:usize,
+    limit:Option<usize>
+}
+
+impl OrderByPostProcessor
+{
+    pub fn new(fields:Vec<(usize, bool)>, offset:Option<usize>, limit:Option<usize>) -> Self
+    {
+        Self{fields, offset:offset.unwrap_or(0), limit}
+    }
+    pub fn new_ref(fields:Vec<(usize, bool)>, offset:Option<usize>, limit:Option<usize>) -> Rc<RefCell<Self>>
+    {
+        Rc::new(
+            RefCell::new(
+                Self::new(fields, offset, limit)
+            )
+        )
+    }
+
+    fn cmp_func(&self, a:usize, b:usize, block:&ColumnBlock) -> Ordering
+    {
+        for (fld, asc) in self.fields.iter()
+        {
+            let col = block.col_at(*fld);
+            let cmp_res = if *asc {
+                col.elems_cmp(a, b)
+            } else {
+                col.elems_cmp(b, a)
+            };
+            match cmp_res
+            {
+                Ordering::Equal => continue,
+                other => return other
+            }
+        }
+        Ordering::Equal
+    }
+
+}
+
+
+impl PostProcessor for OrderByPostProcessor
+{
+    fn run(&mut self, output_ref :BlockRef) -> DBResult<()>
+    {
+        let mut output = output_ref.borrow_mut();
+        let mut perms:Vec<usize> = (0..output.rows_len()).collect();
+
+        perms.sort_unstable_by(
+            |a, b| self.cmp_func(*a, *b, &output)
+        );
+
+        let to = match self.limit {
+            Some(l) => std::cmp::min(l + self.offset, perms.len()),
+            None => perms.len()
+        };
+
+        output.permute(&perms[self.offset..to]);
         Ok(())
     }
 }

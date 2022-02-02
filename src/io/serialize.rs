@@ -23,7 +23,7 @@ make_native_byte!(f64);
 pub trait ByteSerialize
 {
     fn to_byte(&self, dest:&mut impl Write) -> std::io::Result<()>;
-    fn from_byte(&mut self, src: &mut impl Read) -> std::io::Result<()>;
+    fn from_byte(&mut self, src: &mut (impl Read + ?Sized)) -> std::io::Result<()>;
     fn size_in_bytes(&self) -> usize;
 }
 
@@ -43,7 +43,7 @@ impl<T:NativeByte + Default> ByteSerialize for Vec<T>
         dest.flush()?;
         Ok(())
     }
-    fn from_byte(&mut self, src: &mut impl Read) -> std::io::Result<()>
+    fn from_byte(&mut self, src: &mut (impl Read + ?Sized)) -> std::io::Result<()>
     {
         let ptr = self.as_mut_ptr() as *mut u8;
         let  slice = unsafe {
@@ -69,7 +69,7 @@ impl<T:NativeByte> ByteSerialize for T
         dest.flush()?;
         Ok(())
     }
-    fn from_byte(&mut self, src: &mut impl Read) -> std::io::Result<()>
+    fn from_byte(&mut self, src: &mut (impl Read + ?Sized)) -> std::io::Result<()>
     {
         let ptr = self as *mut T as  *mut u8;
         let  slice = unsafe {
@@ -102,7 +102,7 @@ impl ByteSerialize for Vec<String>
         dest.flush()?;
         Ok(())
     }
-    fn from_byte(&mut self, src: &mut impl Read) -> std::io::Result<()>
+    fn from_byte(&mut self, src: &mut (impl Read + ?Sized)) -> std::io::Result<()>
     {
         let mut lengths = Vec::<u32>::new();
         lengths.resize(self.len(), 0);
@@ -129,7 +129,7 @@ impl ByteSerialize for String
         dest.write_all(self.as_bytes())?;
         Ok(())
     }
-    fn from_byte(&mut self, src: &mut impl Read) -> std::io::Result<()>
+    fn from_byte(&mut self, src: &mut (impl Read + ?Sized)) -> std::io::Result<()>
     {
         let mut length:u32 = 0;
         length.from_byte(src)?;

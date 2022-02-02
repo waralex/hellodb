@@ -90,6 +90,14 @@ impl ColumnBlock
         }
     }
 
+    pub fn permute(&mut self, perms: &[usize])
+    {
+        for i in 0..self.columns.len()
+        {
+            self.columns[i].permute(perms);
+        }
+    }
+
     pub fn process(&mut self, rows:usize) -> DBResult<()>
     {
         self.resize(rows);

@@ -52,6 +52,7 @@ mod test {
     use super::*;
     use crate::test_misc::*;
     use crate::types::types::*;
+    use cli_table::print_stdout;
 
     #[test]
     fn limit()
@@ -77,5 +78,23 @@ mod test {
         assert_eq!(out_block.rows_len(), 5);
         assert_eq!(out_block.col_at(0).downcast_data_ref::<DBInt>().unwrap()[0], 6);
         cleanup_test_table("plan_db");
+    }
+
+    #[test]
+    fn order_by()
+    {
+        cleanup_test_table("order_db");
+        let db = create_test_db("order_db", 10);
+        let mut plan = Plan::from_sql(&db, "select id, gender, age from regs order by gender desc, age limit 5 offset 2 ").unwrap();
+        plan.execute().unwrap();
+
+        let out_block_ref = plan.output();
+        let out_block = out_block_ref.borrow();
+        assert_eq!(out_block.rows_len(), 5);
+        assert_eq!(
+            out_block.col_at(0).downcast_data_ref::<DBInt>().unwrap().as_ref(),
+            vec![5 as i64, 3, 1, 10, 8]
+            );
+        cleanup_test_table("order_db");
     }
 }
