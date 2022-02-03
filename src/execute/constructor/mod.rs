@@ -92,40 +92,43 @@ impl<'a>  Constructor<'a>
 
         }
 
-        let mut order_field_names = Vec::<String>::new();
+
+        let mut order_fields = Vec::<(String, bool)>::new();
         for order_expr in order
         {
             let col_name = expr_constr.parse(&order_expr.expr)?;
-            order_field_names.push(col_name);
+            let is_asc = order_expr.asc.unwrap_or(true);
+            order_fields.push((col_name.clone(), is_asc));
         }
 
-        let filter_col_index = match filter_col_name
-        {
-            Some(n) => Some(input.col_index_by_name(&n).unwrap()),
-            None => None
-        };
-
         let mut output = ColumnBlock::new();
-        let mut res_indexes = Vec::<usize>::new();
+
         for rcol in res_cols.iter()
         {
-            let col_index = input.col_index_by_name(&rcol).unwrap();
-            res_indexes.push(col_index);
-            let col = input.col_at(col_index);
+            let col = input.col_at(rcol);
             output.add(
                 col.clone_empty(),
                 DontTouchSource::new_ref()
             );
         }
 
-        let mut order_fields = Vec::<(usize, bool)>::new();
-
-        for (order_expr, col_name) in order.iter().zip(order_field_names)
+        for (col_name, _) in order_fields.iter()
         {
-            let col_index = input.col_index_by_name(&col_name).unwrap();
-            let is_asc = order_expr.asc.unwrap_or(true);
-            order_fields.push((col_index, is_asc));
+            //let not_in_res = res_cols.iter().find(|&x| x == &col_name).is_none();
+            if !output.has_col(&col_name)
+            {
+                let col = input.col_at(col_name);
+                output.add_invisible(
+                    col.clone_empty(),
+                    DontTouchSource::new_ref()
+                );
+
+            }
         }
+
+
+
+
 
 
         let mut step = ExecuteStep::new(input, output);
@@ -139,8 +142,7 @@ impl<'a>  Constructor<'a>
         let copy_limit = if has_order {None} else {limit};
 
         let append_proc_ref = FilteredAppendToOutputProcessor::new_ref(
-                    res_indexes,
-                    filter_col_index,
+                    filter_col_name,
                     copy_offset,
                     copy_limit
                 );

@@ -6,7 +6,7 @@ use crate::functions::regular::RegFunctionRef;
 use crate::columns::Column;
 pub trait ColumnSource
 {
-    fn fill_column(&mut self, block:&mut Vec<Column>, col_ind:usize) -> DBResult<()>;
+    fn fill_column(&mut self, columns:&mut HashMap<String,Column>, col_name:&str) -> DBResult<()>;
 }
 
 pub type ColumnSourceRef = Box<dyn ColumnSource>;
@@ -25,7 +25,7 @@ impl DontTouchSource
 
 impl ColumnSource for DontTouchSource
 {
-    fn fill_column(&mut self, _block:&mut Vec<Column>, _col_ind:usize) -> DBResult<()>
+    fn fill_column(&mut self, _columns:&mut HashMap<String, Column>, _col_name:&str) -> DBResult<()>
     {
         Ok(())
     }
@@ -50,9 +50,9 @@ impl ExternalSource
 
 impl ColumnSource for ExternalSource
 {
-    fn fill_column(&mut self, block:&mut Vec<Column>, col_ind:usize) -> DBResult<()>
+    fn fill_column(&mut self, columns:&mut HashMap<String, Column>, col_name:&str) -> DBResult<()>
     {
-        match self.reader.read_col(block[col_ind].data_mut()) {
+        match self.reader.read_col(columns.get_mut(col_name).unwrap().data_mut()) {
             Ok(_) => Ok(()),
             Err(r) => Err(r.to_string())
         }
@@ -78,11 +78,9 @@ impl<T:DBType> ConstValueSource<T>
 
 impl<T:DBType> ColumnSource for ConstValueSource<T>
 {
-    fn fill_column(&mut self, block:&mut Vec<Column>, col_ind:usize) -> DBResult<()>
+    fn fill_column(&mut self, columns:&mut HashMap<String, Column>, col_name:&str) -> DBResult<()>
     {
-        for v in block[col_ind].downcast_data_iter_mut::<T>().unwrap() {
-            *v = self.value.clone()
-        }
+        columns.get_mut(col_name).unwrap().downcast_data_mut::<T>().unwrap().fill(self.value.clone());
 
         Ok(())
     }
@@ -91,36 +89,35 @@ impl<T:DBType> ColumnSource for ConstValueSource<T>
 
 pub struct FunctionSource
 {
-    args_inds :Vec<usize>,
+    args :Vec<String>,
     func: RegFunctionRef
 }
 
 impl FunctionSource
 {
-    pub fn new(args_inds:Vec<usize>, func:RegFunctionRef) -> FunctionSource
+    pub fn new(args:Vec<String>, func:RegFunctionRef) -> FunctionSource
     {
-        FunctionSource{args_inds, func}
+        FunctionSource{args, func}
     }
-    pub fn new_ref(args_inds:Vec<usize>, func:RegFunctionRef) -> ColumnSourceRef
+    pub fn new_ref(args:Vec<String>, func:RegFunctionRef) -> ColumnSourceRef
     {
-        Box::new(FunctionSource::new(args_inds, func))
+        Box::new(FunctionSource::new(args, func))
     }
 }
 
 impl ColumnSource for FunctionSource
 {
-    fn fill_column(&mut self, block:&mut Vec<Column>, col_ind:usize) -> DBResult<()>
+    fn fill_column(&mut self, columns:&mut HashMap<String, Column>, col_name:&str) -> DBResult<()>
     {
         let mut args = Vec::<&Column>::new();
-        assert!(self.args_inds.iter().find(|&&i| i == col_ind).is_none());
         //If the condition above is met, this block is safe
         unsafe{
-            for i in self.args_inds.iter()
+            for i in self.args.iter()
             {
-                let ptr = &block[*i] as *const Column;
+                let ptr = &columns[i] as *const Column;
                 args.push(&*ptr);
             }
         }
-        self.func.apply(args, &mut block[col_ind])
+        self.func.apply(args, columns.get_mut(col_name).unwrap())
     }
 }

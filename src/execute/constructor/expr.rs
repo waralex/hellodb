@@ -103,17 +103,15 @@ impl<'a> ExprConstructor<'a>
 
         let left_name = &self.parse(left)?;
         let right_name = &self.parse(right)?;
-        let left_index = self.input.col_index_by_name(&left_name).unwrap();
-        let right_index = self.input.col_index_by_name(&right_name).unwrap();
         let arg_types = vec![
-            self.input.col_at(left_index).type_name(),
-            self.input.col_at(right_index).type_name(),
+            self.input.col_at(left_name).type_name(),
+            self.input.col_at(right_name).type_name(),
         ];
         let type_name = op_builder.result_type(arg_types.clone())?;
         self.input.add(
             Column::new(ColumnHeader::new(col_name, type_name)),
             FunctionSource::new_ref(
-                vec![left_index, right_index],
+                vec![left_name.clone(), right_name.clone()],
                 op_builder.build(arg_types)?
             )
         );
@@ -128,16 +126,14 @@ impl<'a> ExprConstructor<'a>
         };
 
         let expr_name = &self.parse(expr)?;
-        println!("FFF {}", expr_name);
-        let expr_index = self.input.col_index_by_name(&expr_name).unwrap();
         let arg_types = vec![
-            self.input.col_at(expr_index).type_name(),
+            self.input.col_at(expr_name).type_name(),
         ];
         let type_name = op_builder.result_type(arg_types.clone())?;
         self.input.add(
             Column::new(ColumnHeader::new(col_name, type_name)),
             FunctionSource::new_ref(
-                vec![expr_index],
+                vec![expr_name.clone()],
                 op_builder.build(arg_types)?
             )
         );
@@ -174,4 +170,3 @@ impl<'a> ExprConstructor<'a>
     }
 
 }
-

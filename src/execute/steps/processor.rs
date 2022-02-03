@@ -40,8 +40,7 @@ impl<Iter:Iterator<Item = u32>> Processor for ChunkedProcessor<Iter>
 
 pub struct FilteredAppendToOutputProcessor
 {
-    cols_to_copy :Vec<usize>,
-    filter_col_index:Option<usize>,
+    filter_col_name:Option<String>,
     offset:usize,
     limit:Option<usize>,
     rest_offset:Option<usize>,
@@ -50,16 +49,16 @@ pub struct FilteredAppendToOutputProcessor
 
 impl FilteredAppendToOutputProcessor
 {
-    pub fn new(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>, offset:Option<usize>, limit:Option<usize>) -> Self
+    pub fn new(filter_col_name:Option<String>, offset:Option<usize>, limit:Option<usize>) -> Self
     {
-        Self{cols_to_copy, filter_col_index, offset:offset.unwrap_or(0), limit, processed:0, rest_offset:None}
+        Self{filter_col_name, offset:offset.unwrap_or(0), limit, processed:0, rest_offset:None}
     }
-    pub fn new_ref(cols_to_copy :Vec<usize>, filter_col_index:Option<usize>,
+    pub fn new_ref(filter_col_name:Option<String>,
                          offset:Option<usize>, limit:Option<usize>) -> Rc<RefCell<Self>>
     {
         Rc::new(
             RefCell::new(
-                Self::new(cols_to_copy, filter_col_index, offset, limit)
+                Self::new(filter_col_name, offset, limit)
             )
         )
     }
@@ -80,8 +79,8 @@ impl Processor for FilteredAppendToOutputProcessor
         }
 
         let input = input.borrow();
-        let filter_col = match self.filter_col_index {
-           Some(i) => Some(input.col_at(i)),
+        let filter_col = match &self.filter_col_name {
+           Some(v) => Some(input.col_at(v)),
            None => None
         };
         let add_size:i64 = match filter_col {
@@ -102,12 +101,14 @@ impl Processor for FilteredAppendToOutputProcessor
         let mut out = output.borrow_mut();
         let offset = out.rows_len();
         out.resize(offset + add_size as usize);
-        for (out_i, in_i) in self.cols_to_copy.iter().enumerate()
+
+        for (name, out_col) in out.col_iter_mut()
         {
             match filter_col {
-                Some(col) => input.col_at(*in_i).copy_filtered_to(out.col_at_mut(out_i), offset, col),
-                None => input.col_at(*in_i).copy_to(out.col_at_mut(out_i), offset)
+                Some(fcol) => input.col_at(name).copy_filtered_to(out_col, offset, fcol),
+                None => input.col_at(name).copy_to(out_col, offset)
             };
+
         }
         self.processed += add_size as usize;
 
@@ -129,18 +130,18 @@ impl PostProcessor for FilteredAppendToOutputProcessor
 
 pub struct OrderByPostProcessor
 {
-    fields:Vec<(usize, bool)>,
+    fields:Vec<(String, bool)>,
     offset:usize,
     limit:Option<usize>
 }
 
 impl OrderByPostProcessor
 {
-    pub fn new(fields:Vec<(usize, bool)>, offset:Option<usize>, limit:Option<usize>) -> Self
+    pub fn new(fields:Vec<(String, bool)>, offset:Option<usize>, limit:Option<usize>) -> Self
     {
         Self{fields, offset:offset.unwrap_or(0), limit}
     }
-    pub fn new_ref(fields:Vec<(usize, bool)>, offset:Option<usize>, limit:Option<usize>) -> Rc<RefCell<Self>>
+    pub fn new_ref(fields:Vec<(String, bool)>, offset:Option<usize>, limit:Option<usize>) -> Rc<RefCell<Self>>
     {
         Rc::new(
             RefCell::new(
@@ -153,7 +154,7 @@ impl OrderByPostProcessor
     {
         for (fld, asc) in self.fields.iter()
         {
-            let col = block.col_at(*fld);
+            let col = block.col_at(fld);
             let cmp_res = if *asc {
                 col.elems_cmp(a, b)
             } else {

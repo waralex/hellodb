@@ -11,9 +11,9 @@ use source::*;
 
 pub struct ColumnBlock
 {
-    columns:Vec<Column>,
-    sources:Vec<ColumnSourceRef>,
-    name_index:HashMap<String, usize>
+    columns:HashMap<String, Column>,
+    sources:HashMap<String, ColumnSourceRef>,
+    col_order:Vec<String>,
 }
 
 pub type BlockRef = Rc<RefCell<ColumnBlock>>;
@@ -22,15 +22,22 @@ impl ColumnBlock
 {
     pub fn new() -> ColumnBlock
     {
-        ColumnBlock { columns: Vec::new(), sources: Vec::new(), name_index: HashMap::new() }
+        ColumnBlock { columns: HashMap::new(), sources: HashMap::new(), col_order: Vec::new() }
     }
 
     pub fn add(&mut self, column:Column, source:ColumnSourceRef) -> &mut ColumnBlock
     {
-        self.name_index.insert(column.name().to_string(), self.columns.len());
-        self.columns.push(column);
-        self.sources.push(source);
+        let col_name = column.name().to_string();
+        self.add_invisible(column, source);
+        self.col_order.push(col_name);
         self
+    }
+
+    pub fn add_invisible(&mut self, column:Column, source:ColumnSourceRef)
+    {
+        let col_name = column.name().to_string();
+        self.columns.insert(col_name.clone(), column);
+        self.sources.insert(col_name.clone(), source);
     }
 
     pub fn is_empty(&self) -> bool
@@ -50,60 +57,69 @@ impl ColumnBlock
         }
         else
         {
-            self.columns[0].len()
+            self.columns[&self.col_order[0]].len()
+
         }
+    }
+
+    pub fn drop_column(&mut self, name:&str)
+    {
+
     }
 
     pub fn has_col(&self, name:&str) -> bool
     {
-        self.name_index.contains_key(name)
-    }
-    pub fn col_index_by_name(&self, name:&str) -> Option<usize>
-    {
-        match self.name_index.get(name) {
-            Some(v) => Some(v.clone()),
-            None => None
-        }
+        self.columns.contains_key(name)
     }
 
-    pub fn col_at(&self, ind:usize) -> &Column
+    pub fn col_at(&self, name:&str) -> &Column
     {
-        &self.columns[ind]
+        self.columns.get(name).unwrap()
     }
 
-    pub fn col_at_mut(&mut self, ind:usize) -> &mut Column
+    pub fn col_iter(&self) -> impl Iterator<Item = (&String, &Column)>
     {
-        &mut self.columns[ind]
+        self.columns.iter()
+    }
+
+    pub fn col_iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Column)>
+    {
+        self.columns.iter_mut()
+    }
+
+    pub fn col_at_mut(&mut self, name:&str) -> &mut Column
+    {
+        self.columns.get_mut(name).unwrap()
     }
     pub fn resize(&mut self, rows:usize)
     {
-        for i in 0..self.columns.len()
+        for (_, col) in self.columns.iter_mut()
         {
-            self.columns[i].resize(rows);
+            col.resize(rows);
         }
     }
     pub fn fit_offset_limit(&mut self, offset:usize, limit:Option<usize>)
     {
-        for i in 0..self.columns.len()
+        for (_, col) in self.columns.iter_mut()
         {
-            self.columns[i].fit_offset_limit(offset, limit);
+            col.fit_offset_limit(offset, limit);
         }
     }
 
     pub fn permute(&mut self, perms: &[usize])
     {
-        for i in 0..self.columns.len()
+        for (_, col) in self.columns.iter_mut()
         {
-            self.columns[i].permute(perms);
+            col.permute(perms);
         }
     }
 
     pub fn process(&mut self, rows:usize) -> DBResult<()>
     {
         self.resize(rows);
-        for i in 0..self.columns.len()
+        for name in self.col_order.iter()
         {
-            self.sources[i].fill_column(&mut self.columns, i)?;
+            self.sources.get_mut(name).unwrap().fill_column(&mut self.columns, &name)?;
         }
         Ok(())
     }
@@ -115,7 +131,7 @@ impl ColumnBlock
         for r in 0..min(max_rows, self.rows_len())
         {
             let mut row_vec = Vec::<CellStruct>::new();
-            for c in 0..self.cols_len()
+            for c in self.col_order.iter()
             {
                 row_vec.push(
                     self.columns[c].data_ref().
@@ -138,7 +154,7 @@ impl ColumnBlock
             res_vec.push(row_vec);
         }
         let mut title_vec = Vec::<CellStruct>::new();
-        for c in 0..self.cols_len()
+        for c in self.col_order.iter()
         {
             title_vec.push(
                 format!(
@@ -192,9 +208,9 @@ mod test {
         block.add(r, DontTouchSource::new_ref());
         block.add(l, DontTouchSource::new_ref());
         let op = PlusBuilder::new().build(args).unwrap();
-        block.add(d, FunctionSource::new_ref(Vec::<usize>::from([0, 1]), op));
+        block.add(d, FunctionSource::new_ref(vec!["l".to_string(), "r".to_string()], op));
         block.process(10).unwrap();
-        for (i, v) in block.col_at(2).downcast_data_iter::<DBInt>().unwrap().enumerate()
+        for (i, v) in block.col_at("d").downcast_data_iter::<DBInt>().unwrap().enumerate()
         {
             assert_eq!(*v, (1 + i as i64) * 11);
         }
@@ -270,22 +286,22 @@ mod test {
         ).add(
             Column::new(ColumnHeader::new("a + b", TypeName::DBInt)),
             FunctionSource::new_ref(
-                vec![0, 1], PlusBuilder::new().build(args.clone()).unwrap()
+                vec!["a".to_string(), "b".to_string()], PlusBuilder::new().build(args.clone()).unwrap()
             )
         ).add(
             Column::new(ColumnHeader::new("a + b == c", TypeName::DBInt)),
             FunctionSource::new_ref(
-                vec![2, 3], EqualBuilder::new().build(args.clone()).unwrap()
+                vec!["c".to_string(), "a + b".to_string()], EqualBuilder::new().build(args.clone()).unwrap()
             )
 
         );
 
 
         block.process(4).unwrap();
-        let res:Vec<i64> = block.col_at(4).downcast_data_iter::<DBInt>().unwrap().copied().collect();
+        let res:Vec<i64> = block.col_at("a + b == c").downcast_data_iter::<DBInt>().unwrap().copied().collect();
         assert_eq!(res, vec![1, 0, 1, 0]);
         block.process(4).unwrap();
-        let res:Vec<i64> = block.col_at(4).downcast_data_iter::<DBInt>().unwrap().copied().collect();
+        let res:Vec<i64> = block.col_at("a + b == c").downcast_data_iter::<DBInt>().unwrap().copied().collect();
         assert_eq!(res, vec![0, 1, 0, 1]);
 
         if test_path.exists()
